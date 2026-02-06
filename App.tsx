@@ -5,6 +5,7 @@ import StatsRadar from './components/StatsRadar';
 import CharacterSelector from './components/CharacterSelector';
 import LevelUpModal from './components/LevelUpModal';
 import { generateResponse } from './services/geminiService';
+import { saveContent } from './services/driveLogger';
 import { Send, Zap, Loader2, Star, AlertTriangle, Trash2, MessageCircle, Trophy, Bell, Archive, X, Menu, Calendar } from 'lucide-react';
 
 // Updated storage key for V2 data structure
@@ -140,7 +141,7 @@ const App: React.FC = () => {
         try {
             const contextHistory = histories[currentCharacterId] || [];
             const historyForAI = [...contextHistory, userMessage];
-            const responseText = await generateResponse(historyForAI, currentCharacterId, day, text);
+            const responseText = await generateResponse(contextHistory, currentCharacterId, day, text);
 
             let cleanedText = responseText;
             if (responseText.includes('[MISSION_COMPLETE]')) {
@@ -173,17 +174,40 @@ const App: React.FC = () => {
                 }
             }
 
+            const aiMessage: Message = {
+                id: (Date.now() + 1).toString(), sender: 'ai', characterId: currentCharacterId, text: cleanedText, timestamp: Date.now()
+            };
             setHistories((prev) => ({
-                ...prev, [currentCharacterId]: [...(prev[currentCharacterId] || []), {
-                    id: (Date.now() + 1).toString(), sender: 'ai', characterId: currentCharacterId, text: cleanedText, timestamp: Date.now()
-                }]
+                ...prev, [currentCharacterId]: [...(prev[currentCharacterId] || []), aiMessage]
             }));
+
+            // Google Driveにチャット履歴を保存
+            saveChatToDrive(currentCharacterId, [...historyForAI, aiMessage]);
         } catch (err) {
             setError("Network Glitch. Try again.");
         } finally {
             setIsLoading(false);
             setTimeout(() => { isSendingRef.current = false; }, 100);
         }
+    };
+
+    const saveChatToDrive = (charId: CharacterId, messages: Message[]) => {
+        const charName = CHARACTERS[charId]?.name || charId;
+        const markdown = formatChatAsMarkdown(charName, messages);
+        saveContent('chat', `${charName}_Day${day}`, markdown);
+    };
+
+    const formatChatAsMarkdown = (charName: string, messages: Message[]): string => {
+        let md = `# ${charName} - Day ${day}\n\n`;
+        messages.forEach(msg => {
+            const time = new Date(msg.timestamp).toLocaleTimeString('ja-JP');
+            if (msg.sender === 'user') {
+                md += `## 👤 User (${time})\n${msg.text}\n\n`;
+            } else {
+                md += `## 🤖 ${charName} (${time})\n${msg.text}\n\n`;
+            }
+        });
+        return md;
     };
 
     const handleDeleteLog = (id: string) => {

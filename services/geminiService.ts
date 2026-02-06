@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { Message, CharacterId } from '../types';
 import { getCharacterInstruction } from '../constants';
+import { sendLog } from './driveLogger';
 
 // Initialize Gemini Client
 const getClient = () => {
@@ -21,6 +22,7 @@ export const generateResponse = async (
 
     // Use gemini-2.0-flash as it's the most likely 'latest' model the user refers to
     console.log(`[GeminiService] Attempting access with: ${modelId}`);
+    sendLog("INFO", `チャット送信: ${currentCharId} Day${day}`, { model: modelId });
 
     const model = genAI.getGenerativeModel({
       model: modelId,
@@ -42,10 +44,12 @@ export const generateResponse = async (
     const text = response.text();
 
     if (!text) throw new Error("Empty response from AI");
+    sendLog("INFO", `チャット成功: ${currentCharId} Day${day}`);
     return text;
 
   } catch (error: any) {
     console.error("Gemini Generation Error:", error);
+    sendLog("ERROR", `チャットエラー: ${currentCharId} Day${day}`, { error: error.message });
     const errorMessage = error.message || JSON.stringify(error) || "Unknown Error";
 
     if (errorMessage.includes("429") || errorMessage.includes("Quota exceeded")) {
