@@ -1,0 +1,42 @@
+commit 007f4bdaae82ab29fb98e5b81616fbfd8083b726
+Author: jonsonpanson114 <jonsonpanson114@gmail.com>
+Date:   Mon Feb 9 15:17:19 2026 +0900
+
+    おいおい、変更ファイルがないと、何が変わったかなんて、俺にはエスパーじゃないんだからわかるわけないだろ？
+
+diff --git a/services/geminiService.ts b/services/geminiService.ts
+index 03db36b..00519aa 100644
+--- a/services/geminiService.ts
++++ b/services/geminiService.ts
+@@ -15,8 +15,8 @@ export const generateResponse = async (
+   day: number,
+   userPrompt: string
+ ): Promise<string> => {
+-  // Adaptation to Gemini 3 series (using the exact confirmed ID: gemini-3-flash-preview)
+-  const modelId = "gemini-3-flash-preview";
++  // Adaptation to Gemini 2.5 Flash as explicitly requested
++  const modelId = "gemini-2.5-flash";
+   try {
+     const genAI = getClient();
+ 
+@@ -29,8 +29,19 @@ export const generateResponse = async (
+       systemInstruction: getCharacterInstruction(currentCharId, day)
+     });
+ 
++    // Defensive check: If the last message history matches userPrompt, remove it from history passed to API
++    // This handles race conditions where the prompt might be double-added
++    let cleanHistory = history;
++    if (history.length > 0) {
++      const lastMsg = history[history.length - 1];
++      if (lastMsg.sender === 'user' && lastMsg.text === userPrompt) {
++        console.log("Found duplicate last message in history, removing for API call");
++        cleanHistory = history.slice(0, -1);
++      }
++    }
++
+     const chat = model.startChat({
+-      history: history.map(msg => ({
++      history: cleanHistory.map(msg => ({
+         role: msg.sender === 'user' ? 'user' : 'model',
+         parts: [{ text: msg.text }]
+       })),

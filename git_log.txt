@@ -1,0 +1,23 @@
+commit 007f4bdaae82ab29fb98e5b81616fbfd8083b726
+Author: jonsonpanson114 <jonsonpanson114@gmail.com>
+Date:   Mon Feb 9 15:17:19 2026 +0900
+
+    おいおい、変更ファイルがないと、何が変わったかなんて、俺にはエスパーじゃないんだからわかるわけないだろ？
+
+commit 0a790b1545ae6fa5f0b0d54a1823aea9d087cd0c
+Author: jonsonpanson114 <jonsonpanson114@gmail.com>
+Date:   Fri Feb 6 10:31:15 2026 +0900
+
+    Fix: Prevent double comment submission by correcting history handling in App.tsx
+
+commit e252ffd77089095e04c23258331a9c9541f946c6
+Author: jonsonpanson114 <jonsonpanson114@gmail.com>
+Date:   Sat Jan 31 21:50:56 2026 +0900
+
+    Fix: Perfect flat structure for Vercel
+
+commit 11300864404576b0a2cceda03e063d2594317773
+Author: jonsonpanson114 <jonsonpanson114@gmail.com>
+Date:   Sat Jan 31 21:11:56 2026 +0900
+
+    Complete Clover Protocol v5.0
