@@ -159,7 +159,7 @@ const GrowthTree: React.FC<{ level: number }> = ({ level }) => {
     const cpX = (x + endX) / 2 + curveOffset * Math.cos(((angle + 90) * Math.PI) / 180);
     const cpY = (y + endY) / 2 + curveOffset * Math.sin(((angle + 90) * Math.PI) / 180);
 
-    const elements: JSX.Element[] = [];
+    const elements: React.ReactNode[] = [];
 
     // Draw Branch
     elements.push(
