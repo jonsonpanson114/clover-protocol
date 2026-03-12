@@ -26,7 +26,7 @@ export const generateResponse = async (
 
     const model = genAI.getGenerativeModel({
       model: modelId,
-      systemInstruction: getCharacterInstruction(currentCharId, day)
+      systemInstruction: getCharacterInstruction(currentCharId, day, stats)
     });
 
     // Defensive check: If the last message history matches userPrompt, remove it from history passed to API

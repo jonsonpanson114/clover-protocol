@@ -4,6 +4,20 @@
   animation: spin 3s linear infinite;
 }
 
+.animate-pulse-slow {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @keyframes spin {
   from {
     transform: rotate(0deg);
@@ -60,4 +74,91 @@
   animation-name: fall;
   animation-timing-function: linear;
   animation-fill-mode: forwards;
+}
+
+/* Message entry animations */
+@keyframes slideInFromLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInFromRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes typewriterCursor {
+  0%, 50% {
+    opacity: 1;
+  }
+
+  51%, 100% {
+    opacity: 0;
+  }
+}
+
+.message-enter-left {
+  animation: slideInFromLeft 0.3s ease-out;
+}
+
+.message-enter-right {
+  animation: slideInFromRight 0.3s ease-out;
+}
+
+.typewriter-cursor {
+  display: inline-block;
+  animation: typewriterCursor 0.8s infinite;
+  color: #000;
+  font-weight: bold;
+}
+
+.typewriter-text.typing {
+  display: inline;
+}
+
+/* Utility scale classes */
+.scale-102 {
+  transform: scale(1.02);
+}
+
+.scale-105 {
+  transform: scale(1.05);
+}
+
+.translate-x-0dot5 {
+  transform: translateX(0.5px);
+}
+
+.translate-y-0dot5 {
+  transform: translateY(0.5px);
+}
+
+.slide-in-from-right-2 {
+  animation: slideInFromRight 0.2s ease-out;
 }

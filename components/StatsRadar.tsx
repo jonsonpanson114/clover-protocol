@@ -12,6 +12,7 @@ const StatsRadar: React.FC<StatsRadarProps> = ({ stats }) => {
     { subject: '楽しさ', A: stats.fun, fullMark: 100 },
     { subject: '言語化', A: stats.articulation, fullMark: 100 },
     { subject: '記憶力', A: stats.memory, fullMark: 100 },
+    { subject: '効率', A: stats.efficiency, fullMark: 100 },
   ];
 
   return (

@@ -1,0 +1,459 @@
+     1	import React, { useState, useEffect, useRef } from 'react';
+     2	import { UserStats, Message, CharacterId, MissionLogEntry, SideMission, StoryBranch } from './types';
+     3	import { CHARACTERS, getCharacterInstruction } from './constants';
+     4	import StatsRadar from './components/StatsRadar';
+     5	import CharacterSelector from './components/CharacterSelector';
+     6	import LevelUpModal from './components/LevelUpModal';
+     7	import EventModal from './components/EventModal';
+     8	import SpecialMissionModal from './components/SpecialMissionModal';
+     9	import WeekendModal from './components/WeekendModal';
+    10	import SideMissionBanner from './components/SideMissionBanner';
+    11	import SeasonalBanner from './components/SeasonalBanner';
+    12	import ArchiveModal from './components/ArchiveModal';
+    13	import TypewriterText from './components/TypewriterText';
+    14	import { generateResponse } from './services/geminiService';
+    15	import { saveContent } from './services/driveLogger';
+    16	import { getRandomEvent } from './randomEvents';
+    17	import { getUnlockableSpecialMissions } from './specialMissions';
+    18	import { generateSideMission, checkExpiredMissions, completeSideMission } from './services/sideMissionService';
+    19	import { getActiveSeasonalEvent } from './seasonalEvents';
+    20	import { requestNotificationPermission, showNotification, scheduleReminder } from './services/notificationService';
+    21	import { saveMissionToArchive } from './services/archiveService';
+    22	import { Send, Zap, Loader2, Star, AlertTriangle, Trash2, MessageCircle, Trophy, Bell, Archive, X, Menu, Calendar, BellRing } from 'lucide-react';
+    23	
+    24	// Updated storage key for V2 data structure
+    25	const STORAGE_KEY = 'CLOVER_PROTOCOL_STATE_V2';
+    26	const REMINDER_STORAGE_KEY = 'CLOVER_LAST_REMINDED_DATE';
+    27	
+    28	type Histories = Record<CharacterId, Message[]>;
+    29	
+    30	const App: React.FC = () => {
+    31	    // --- State Management ---
+    32	    const loadState = <T,>(key: string, fallback: T): T => {
+    33	        try {
+    34	            const saved = localStorage.getItem(STORAGE_KEY);
+    35	            if (saved) {
+    36	                const parsed = JSON.parse(saved);
+    37	                const val = parsed[key];
+    38	                if (val !== undefined && val !== null) {
+    39	                    // Safety check: Ensure loaded state matches current structure
+    40	                    if (typeof fallback === 'object' && !Array.isArray(fallback) && fallback !== null) {
+    41	                        return { ...fallback, ...val };
+    42	                    }
+    43	                    return val;
+    44	                }
+    45	            }
+    46	        } catch (e) {
+    47	            console.error("Failed to load state", e);
+    48	        }
+    49	        return fallback;
+    50	    };
+    51	
+    52	    const [day, setDay] = useState<number>(() => loadState('day', 1));
+    53	    const [stats, setStats] = useState<UserStats>(() => loadState('stats', {
+    54	        kindness: 20,
+    55	        fun: 20,
+    56	        memory: 20,
+    57	        articulation: 20,
+    58	        efficiency: 20,
+    59	        streak: 0,
+    60	        lastLoginDate: '',
+    61	    }));
+    62	
+    63	    const initialDailyProgress = {
+    64	        [CharacterId.JACK]: false,
+    65	        [CharacterId.HAL]: false,
+    66	        [CharacterId.SAKI]: false,
+    67	        [CharacterId.REN]: false,
+    68	        [CharacterId.OPERATOR]: false,
+    69	        [CharacterId.HIDDEN]: false,
+    70	    };
+    71	    const [dailyProgress, setDailyProgress] = useState<Record<CharacterId, boolean>>(() => loadState('dailyProgress', initialDailyProgress));
+    72	    const [histories, setHistories] = useState<Histories>(() => loadState('histories', {
+    73	        [CharacterId.JACK]: [], [CharacterId.HAL]: [], [CharacterId.SAKI]: [], [CharacterId.REN]: [],
+    74	        [CharacterId.OPERATOR]: [], [CharacterId.HIDDEN]: [],
+    75	    }));
+    76	    const [missionLogs, setMissionLogs] = useState<MissionLogEntry[]>(() => loadState('missionLogs', []));
+    77	    const [currentCharacterId, setCurrentCharacterId] = useState<CharacterId>(() => loadState('currentCharacterId', CharacterId.JACK));
+    78	
+    79	    const [inputText, setInputText] = useState('');
+    80	    const [isLoading, setIsLoading] = useState(false);
+    81	    const [showLogModal, setShowLogModal] = useState(false);
+    82	    const [showMenu, setShowMenu] = useState(false); // Mobile Menu Toggle
+    83	    const [error, setError] = useState<string | null>(null);
+    84	    const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
+    85	    const [showLevelUp, setShowLevelUp] = useState(false);
+    86	
+    87	    // === New State Variables ===
+    88	    const [showEventModal, setShowEventModal] = useState(false);
+    89	    const [currentEvent, setCurrentEvent] = useState<any>(null);
+    90	    const [showSpecialMissionModal, setShowSpecialMissionModal] = useState(false);
+    91	    const [specialMissions, setSpecialMissions] = useState<any[]>([]);
+    92	    const [showWeekendModal, setShowWeekendModal] = useState(false);
+    93	    const [activeSideMission, setActiveSideMission] = useState<SideMission | null>(null);
+    94	    const [showSideMissionBanner, setShowSideMissionBanner] = useState(false);
+    95	    const [activeSeasonalEvent, setActiveSeasonalEvent] = useState<any>(null);
+    96	    const [dismissedSeasonalEvent, setDismissedSeasonalEvent] = useState(false);
+    97	    const [userEvents, setUserEvents] = useState<any>({ triggeredToday: [], lastEventCheck: '' });
+    98	    const [unlockedCharacters, setUnlockedCharacters] = useState<CharacterId[]>([]);
+    99	    const [showReplayModal, setShowReplayModal] = useState(false);
+   100	    const [replayMessages, setReplayMessages] = useState<Message[]>([]);
+   101	    const scrollRef = useRef<HTMLDivElement>(null);
+   102	    const isSendingRef = useRef(false);
+   103	
+   104	    const currentHistory = histories[currentCharacterId] || [];
+   105	    const currentCharacter = CHARACTERS[currentCharacterId] || CHARACTERS[CharacterId.JACK];
+   106	    const completedCount = Object.values(dailyProgress || {}).filter(Boolean).length;
+   107	    const totalMissions = 6; // Updated for new characters
+   108	
+   109	    // --- Effects ---
+   110	
+   111	    // Save state to localStorage
+   112	    useEffect(() => {
+   113	        try {
+   114	            const stateToSave = {
+   115	                day, stats, histories, missionLogs, currentCharacterId, dailyProgress,
+   116	                userEvents, unlockedCharacters
+   117	            };
+   118	            localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
+   119	        } catch (e) { console.error("Failed to save state", e); }
+   120	    }, [day, stats, histories, missionLogs, currentCharacterId, dailyProgress, userEvents, unlockedCharacters]);
+   121	
+   122	    useEffect(() => {
+   123	        if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+   124	    }, [histories, currentCharacterId, isLoading]);
+   125	
+   126	    useEffect(() => {
+   127	        setInputText('');
+   128	        setError(null);
+   129	    }, [currentCharacterId]);
+   130	
+   131	    // Random Event Check (on first load of the day)
+   132	    useEffect(() => {
+   133	        const today = new Date().toISOString().split('T')[0];
+   134	        const lastCheck = userEvents.lastEventCheck || '';
+   135	
+   136	        if (lastCheck !== today) {
+   137	            // Check for new random events
+   138	            const randomEvent = getRandomEvent(userEvents.triggeredToday || []);
+   139	            if (randomEvent) {
+   140	                setCurrentEvent(randomEvent);
+   141	                setShowEventModal(true);
+   142	                setUserEvents({
+   143	                    triggeredToday: [...(userEvents.triggeredToday || []), randomEvent.id],
+   144	                    lastEventCheck: today
+   145	                });
+   146	            } else {
+   147	                setUserEvents({ ...userEvents, lastEventCheck: today });
+   148	            }
+   149	        }
+   150	    }, [day]);
+   151	
+   152	    // Special Mission Unlock Check
+   153	    useEffect(() => {
+   154	        const unlockableMissions = getUnlockableSpecialMissions(
+   155	            stats,
+   156	            specialMissions.map(m => m.id)
+   157	        );
+   158	
+   159	        if (unlockableMissions.length > 0) {
+   160	            setSpecialMissions(unlockableMissions);
+   161	            setShowSpecialMissionModal(true);
+   162	        }
+   163	    }, [stats]);
+   164	
+   165	    // Seasonal Event Check
+   166	    useEffect(() => {
+   167	        const seasonalEvent = getActiveSeasonalEvent();
+   168	        if (seasonalEvent && !dismissedSeasonalEvent) {
+   169	            setActiveSeasonalEvent(seasonalEvent);
+   170	        } else {
+   171	            setActiveSeasonalEvent(null);
+   172	        }
+   173	    }, [day, dismissedSeasonalEvent]);
+   174	
+   175	    // Side Mission Expiration Check
+   176	    useEffect(() => {
+   177	        if (activeSideMission && activeSideMission.expiresAt < Date.now()) {
+   178	            // Mission expired
+   179	            setActiveSideMission(null);
+   180	            setShowSideMissionBanner(false);
+   181	        }
+   182	    }, [activeSideMission]);
+   183	
+   184	    // Streak Logic
+   185	    useEffect(() => {
+   186	        const today = new Date().toISOString().split('T')[0];
+   187	        if (stats.lastLoginDate !== today) {
+   188	            const lastDate = new Date(stats.lastLoginDate || 0);
+   189	            const yesterday = new Date();
+   190	            yesterday.setDate(yesterday.getDate() - 1);
+   191	            const yesterdayString = yesterday.toISOString().split('T')[0];
+   192	
+   193	            let newStreak = stats.streak;
+   194	            if (stats.lastLoginDate === yesterdayString) {
+   195	                // Consecutive login (handled when completing mission usually, but here checking login)
+   196	                // Note: Simplistic approach. Usually streak updates on action completion.
+   197	                // Let's update streak only on mission completion to make it meaningful.
+   198	            } else if (stats.lastLoginDate && stats.lastLoginDate < yesterdayString) {
+   199	                // Streak broken
+   200	                newStreak = 0;
+   201	                setStats(prev => ({ ...prev, streak: 0, lastLoginDate: today }));
+   202	            }
+   203	        }
+   204	    }, []);
+   205	
+   206	    // --- Logic ---
+   207	    const findMissionTitle = (history: Message[], currentDay: number): string => {
+   208	        const regex = new RegExp(`\\*\\*【Day ${currentDay}: (.+?)】\\*\\*`);
+   209	        for (let i = history.length - 1; i >= 0; i--) {
+   210	            const match = history[i].text.match(regex);
+   211	            if (match && match[1]) return match[1];
+   212	        }
+   213	        return "Secret Mission";
+   214	    };
+   215	
+   216	    const handleSendMessage = async (text: string = inputText) => {
+   217	        if (!text.trim() || isLoading || isSendingRef.current) return;
+   218	        isSendingRef.current = true;
+   219	        setError(null);
+   220	
+   221	        const userMessage: Message = { id: Date.now().toString(), sender: 'user', text: text, timestamp: Date.now() };
+   222	
+   223	        setHistories((prev) => ({ ...prev, [currentCharacterId]: [...(prev[currentCharacterId] || []), userMessage] }));
+   224	        setInputText('');
+   225	        setIsLoading(true);
+   226	
+   227	        try {
+   228	            const contextHistory = histories[currentCharacterId] || [];
+   229	            const historyForAI = [...contextHistory, userMessage];
+   230	            const responseText = await generateResponse(
+   231	                contextHistory,
+   232	                currentCharacterId,
+   233	                day,
+   234	                text
+   235	            );
+   236	
+   237	            let cleanedText = responseText;
+   238	            if (responseText.includes('[MISSION_COMPLETE]')) {
+   239	                cleanedText = responseText.replace('[MISSION_COMPLETE]', '');
+   240	                const charEntry = CHARACTERS[currentCharacterId];
+   241	                if (charEntry) {
+   242	                    const charStat = charEntry.stat;
+   243	                    setStats(prev => ({ ...prev, [charStat]: Math.min((prev[charStat] || 0) + 15, 100) }));
+   244	                }
+   245	                setDailyProgress(prev => ({ ...prev, [currentCharacterId]: true }));
+   246	
+   247	                const existingTitle = findMissionTitle(historyForAI, day);
+   248	                const newLog: MissionLogEntry = {
+   249	                    id: Date.now().toString(), day, characterId: currentCharacterId, title: existingTitle, completedAt: Date.now()
+   250	                };
+   251	                setMissionLogs(prev => {
+   252	                    if (prev.some(log => log.day === day && log.characterId === currentCharacterId)) return prev;
+   253	                    return [...prev, newLog];
+   254	                });
+   255	
+   256	                // Day Clear Check
+   257	                const nextProgress = { ...dailyProgress, [currentCharacterId]: true };
+   258	                if (Object.values(nextProgress).every(Boolean)) {
+   259	                    // Streak Update
+   260	                    const today = new Date().toISOString().split('T')[0];
+   261	                    if (stats.lastLoginDate !== today) {
+   262	                        setStats(prev => ({ ...prev, streak: (prev.streak || 0) + 1, lastLoginDate: today }));
+   263	                    }
+   264	                    setShowLevelUp(true);
+   265	                }
+   266	            }
+   267	
+   268	            const aiMessage: Message = {
+   269	                id: (Date.now() + 1).toString(), sender: 'ai', characterId: currentCharacterId, text: cleanedText, timestamp: Date.now()
+   270	            };
+   271	            setHistories((prev) => ({
+   272	                ...prev, [currentCharacterId]: [...(prev[currentCharacterId] || []), aiMessage]
+   273	            }));
+   274	
+   275	            // Google Driveにチャット履歴を保存
+   276	            saveChatToDrive(currentCharacterId, [...historyForAI, aiMessage]);
+   277	        } catch (err) {
+   278	            setError("Network Glitch. Try again.");
+   279	        } finally {
+   280	            setIsLoading(false);
+   281	            setTimeout(() => { isSendingRef.current = false; }, 100);
+   282	        }
+   283	    };
+   284	
+   285	    const saveChatToDrive = (charId: CharacterId, messages: Message[]) => {
+   286	        const charName = CHARACTERS[charId]?.name || charId;
+   287	        const markdown = formatChatAsMarkdown(charName, messages);
+   288	        saveContent('chat', `${charName}_Day${day}`, markdown);
+   289	    };
+   290	
+   291	    const formatChatAsMarkdown = (charName: string, messages: Message[]): string => {
+   292	        let md = `# ${charName} - Day ${day}\n\n`;
+   293	        messages.forEach(msg => {
+   294	            const time = new Date(msg.timestamp).toLocaleTimeString('ja-JP');
+   295	            if (msg.sender === 'user') {
+   296	                md += `## 👤 User (${time})\n${msg.text}\n\n`;
+   297	            } else {
+   298	                md += `## 🤖 ${charName} (${time})\n${msg.text}\n\n`;
+   299	            }
+   300	        });
+   301	        return md;
+   302	    };
+   303	
+   304	    const handleDeleteLog = (id: string) => {
+   305	        setMissionLogs(prev => prev.filter(log => log.id !== id));
+   306	        setConfirmingDeleteId(null);
+   307	    };
+   308	
+   309	    const handleNextDay = () => {
+   310	        setShowLevelUp(false);
+   311	        setDay(d => d + 1);
+   312	        setDailyProgress(initialDailyProgress);
+   313	        // Optional: Clear history for new day or keep it? Keeping it for context is better usually.
+   314	        // But for clean slate feel:
+   315	        // setHistories({ [CharacterId.JACK]: [], [CharacterId.HAL]: [], [CharacterId.SAKI]: [], [CharacterId.REN]: [] });
+   316	    };
+   317	
+   318	
+   319	    const handleStartMission = () => {
+   320	        if (dailyProgress[currentCharacterId]) {
+   321	            handleSendMessage("今日のノルマは達成済みだが、何か？");
+   322	        } else {
+   323	            handleSendMessage("今日のミッションを頼む");
+   324	        }
+   325	    };
+   326	
+   327	    const handleResetData = () => {
+   328	        if (window.confirm("WARNING: 全データを初期化しますか？")) {
+   329	            localStorage.removeItem(STORAGE_KEY);
+   330	            localStorage.removeItem(REMINDER_STORAGE_KEY);
+   331	            window.location.reload();
+   332	        }
+   333	    };
+   334	
+   335	    // === New Feature Handlers ===
+   336	
+   337	    // Event Handlers
+   338	    const handleEventAccept = () => {
+   339	        if (currentEvent?.statReward && currentEvent.statAmount) {
+   340	            setStats(prev => ({ ...prev, [currentEvent.statReward]: Math.min((prev[currentEvent.statReward] || 0) + currentEvent.statAmount, 100) }));
+   341	        }
+   342	        setShowEventModal(false);
+   343	        setCurrentEvent(null);
+   344	    };
+   345	
+   346	    const handleEventDismiss = () => {
+   347	        setShowEventModal(false);
+   348	        setCurrentEvent(null);
+   349	    };
+   350	
+   351	    // Special Mission Handlers
+   352	    const handleSpecialMissionStart = (missionId: string, characterId?: CharacterId) => {
+   353	        if (characterId) {
+   354	            setCurrentCharacterId(characterId);
+   355	            setShowSpecialMissionModal(false);
+   356	        }
+   357	    };
+   358	
+   359	    const handleSpecialMissionClose = () => {
+   360	        setShowSpecialMissionModal(false);
+   361	    };
+   362	
+   363	    // Weekend Selection Handlers
+   364	    const handleWeekendSelect = (branch: StoryBranch) => {
+   365	        // Store the selection for next week's missions
+   366	        // For now, just close the modal
+   367	        setShowWeekendModal(false);
+   368	        if (branch !== 'solo') {
+   369	            setCurrentCharacterId(branch);
+   370	        }
+   371	    };
+   372	
+   373	    // Side Mission Handlers
+   374	    const handleSideMissionAccept = () => {
+   375	        if (activeSideMission) {
+   376	            setCurrentCharacterId(activeSideMission.characterId);
+   377	            setShowSideMissionBanner(false);
+   378	        }
+   379	    };
+   380	
+   381	    const handleSideMissionDismiss = () => {
+   382	        setShowSideMissionBanner(false);
+   383	    };
+   384	
+   385	    // Seasonal Event Handlers
+   386	    const handleSeasonalDismiss = () => {
+   387	        setDismissedSeasonalEvent(true);
+   388	    };
+   389	
+   390	    // Replay Handlers
+   391	    const handleReplayMission = (missionId: string) => {
+   392	        const log = missionLogs.find(l => l.id === missionId);
+   393	        if (log?.messages) {
+   394	            setReplayMessages(log.messages);
+   395	            setShowReplayModal(true);
+   396	            setShowLogModal(false);
+   397	        }
+   398	    };
+   399	
+   400	    // Notification Handler
+   401	    const handleRequestNotifications = async () => {
+   402	        const granted = await requestNotificationPermission();
+   403	        if (granted) {
+   404	            alert('通知が有効化されました！');
+   405	        }
+   406	    };
+   407	
+   408	    // --- Render ---
+   409	    const renderMessageText = (text: string) => {
+   410	        if (!text) return null;
+   411	        return text.split('\n').map((line, i) => {
+   412	            if (line.trim().startsWith('**[') && line.trim().endsWith(']**')) {
+   413	                return <h3 key={i} className="text-pink-500 font-display text-lg mt-4 mb-2 -rotate-1 transform inline-block bg-white border-2 border-black px-2 shadow-[2px_2px_0_0_#000]">{line.replace(/\*\*/g, '')}</h3>;
+   414	            }
+   415	            if (line.trim().startsWith('**【') && line.trim().endsWith('】**')) {
+   416	                return <div key={i} className="bg-yellow-300 border-2 border-black p-2 my-4 shadow-[4px_4px_0_0_#000]"><h2 className="text-lg font-black text-slate-900">{line.replace(/\*\*/g, '')}</h2></div>;
+   417	            }
+   418	            if (line.trim().startsWith('・')) {
+   419	                return <li key={i} className="ml-4 text-slate-800 font-bold list-disc my-1">{line.replace('・', '')}</li>;
+   420	            }
+   421	            if (line.trim() === '---') {
+   422	                return <hr key={i} className="border-t-2 border-dashed border-slate-300 my-4" />;
+   423	            }
+   424	            return <p key={i} className="mb-2 leading-relaxed text-slate-800 font-medium">{line}</p>;
+   425	        });
+   426	    };
+   427	
+   428	    // Determine dynamic colors based on character
+   429	    const getCharTheme = (id: CharacterId) => {
+   430	        switch (id) {
+   431	            case CharacterId.JACK: return { bg: 'bg-rose-50', accent: 'text-rose-500', border: 'border-rose-400' };
+   432	            case CharacterId.HAL: return { bg: 'bg-amber-50', accent: 'text-amber-600', border: 'border-amber-400' };
+   433	            case CharacterId.SAKI: return { bg: 'bg-indigo-50', accent: 'text-indigo-600', border: 'border-indigo-400' };
+   434	            case CharacterId.REN: return { bg: 'bg-emerald-50', accent: 'text-emerald-600', border: 'border-emerald-400' };
+   435	            case CharacterId.OPERATOR: return { bg: 'bg-purple-50', accent: 'text-purple-500', border: 'border-purple-400' };
+   436	            case CharacterId.HIDDEN: return { bg: 'bg-slate-100', accent: 'text-slate-400', border: 'border-slate-400' };
+   437	            default: return { bg: 'bg-white', accent: 'text-black', border: 'border-black' };
+   438	        }
+   439	    }
+   440	    const theme = getCharTheme(currentCharacterId);
+   441	
+   442	    const isApiKeyMissing = !import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY.includes('PLACEHOLDER');
+   443	
+   444	    return (
+   445	        <div className="min-h-screen flex flex-col md:flex-row md:h-screen overflow-hidden relative">
+   446	            {isApiKeyMissing && (
+   447	                <div className="absolute top-0 left-0 w-full bg-red-600 text-white z-50 p-2 text-center font-black animate-pulse border-b-4 border-black">
+   448	                    ⚠️ CRITICAL: API KEY IS MISSING or PLACEHOLDER! Edit .env.local and set VITE_GEMINI_API_KEY to your AIza... key.
+   449	                </div>
+   450	            )}
+   451	
+   452	            {/* New Modals */}
+   453	            {showEventModal && currentEvent && <EventModal event={currentEvent} onAccept={handleEventAccept} onClose={handleEventDismiss} />}
+   454	            {showSpecialMissionModal && <SpecialMissionModal missions={specialMissions} onStartMission={handleSpecialMissionStart} onClose={handleSpecialMissionClose} />}
+   455	            {showWeekendModal && <WeekendModal week={day} onSelect={handleWeekendSelect} onClose={() => setShowWeekendModal(false)} />}
+   456	            {activeSeasonalEvent && !dismissedSeasonalEvent && <SeasonalBanner event={activeSeasonalEvent} onDismiss={handleSeasonalDismiss} />}
+   457	
+   458	            {showLevelUp && <LevelUpModal day={day} onNext={handleNextDay} />}
+   459	

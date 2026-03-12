@@ -1,0 +1,459 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { UserStats, Message, CharacterId, MissionLogEntry, SideMission, StoryBranch } from './types';
+import { CHARACTERS, getCharacterInstruction } from './constants';
+import StatsRadar from './components/StatsRadar';
+import CharacterSelector from './components/CharacterSelector';
+import LevelUpModal from './components/LevelUpModal';
+import EventModal from './components/EventModal';
+import SpecialMissionModal from './components/SpecialMissionModal';
+import WeekendModal from './components/WeekendModal';
+import SideMissionBanner from './components/SideMissionBanner';
+import SeasonalBanner from './components/SeasonalBanner';
+import ArchiveModal from './components/ArchiveModal';
+import TypewriterText from './components/TypewriterText';
+import { generateResponse } from './services/geminiService';
+import { saveContent } from './services/driveLogger';
+import { getRandomEvent } from './randomEvents';
+import { getUnlockableSpecialMissions } from './specialMissions';
+import { generateSideMission, checkExpiredMissions, completeSideMission } from './services/sideMissionService';
+import { getActiveSeasonalEvent } from './seasonalEvents';
+import { requestNotificationPermission, showNotification, scheduleReminder } from './services/notificationService';
+import { saveMissionToArchive } from './services/archiveService';
+import { Send, Zap, Loader2, Star, AlertTriangle, Trash2, MessageCircle, Trophy, Bell, Archive, X, Menu, Calendar, BellRing } from 'lucide-react';
+
+// Updated storage key for V2 data structure
+const STORAGE_KEY = 'CLOVER_PROTOCOL_STATE_V2';
+const REMINDER_STORAGE_KEY = 'CLOVER_LAST_REMINDED_DATE';
+
+type Histories = Record<CharacterId, Message[]>;
+
+const App: React.FC = () => {
+    // --- State Management ---
+    const loadState = <T,>(key: string, fallback: T): T => {
+        try {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                const val = parsed[key];
+                if (val !== undefined && val !== null) {
+                    // Safety check: Ensure loaded state matches current structure
+                    if (typeof fallback === 'object' && !Array.isArray(fallback) && fallback !== null) {
+                        return { ...fallback, ...val };
+                    }
+                    return val;
+                }
+            }
+        } catch (e) {
+            console.error("Failed to load state", e);
+        }
+        return fallback;
+    };
+
+    const [day, setDay] = useState<number>(() => loadState('day', 1));
+    const [stats, setStats] = useState<UserStats>(() => loadState('stats', {
+        kindness: 20,
+        fun: 20,
+        memory: 20,
+        articulation: 20,
+        efficiency: 20,
+        streak: 0,
+        lastLoginDate: '',
+    }));
+
+    const initialDailyProgress = {
+        [CharacterId.JACK]: false,
+        [CharacterId.HAL]: false,
+        [CharacterId.SAKI]: false,
+        [CharacterId.REN]: false,
+        [CharacterId.OPERATOR]: false,
+        [CharacterId.HIDDEN]: false,
+    };
+    const [dailyProgress, setDailyProgress] = useState<Record<CharacterId, boolean>>(() => loadState('dailyProgress', initialDailyProgress));
+    const [histories, setHistories] = useState<Histories>(() => loadState('histories', {
+        [CharacterId.JACK]: [], [CharacterId.HAL]: [], [CharacterId.SAKI]: [], [CharacterId.REN]: [],
+        [CharacterId.OPERATOR]: [], [CharacterId.HIDDEN]: [],
+    }));
+    const [missionLogs, setMissionLogs] = useState<MissionLogEntry[]>(() => loadState('missionLogs', []));
+    const [currentCharacterId, setCurrentCharacterId] = useState<CharacterId>(() => loadState('currentCharacterId', CharacterId.JACK));
+
+    const [inputText, setInputText] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [showLogModal, setShowLogModal] = useState(false);
+    const [showMenu, setShowMenu] = useState(false); // Mobile Menu Toggle
+    const [error, setError] = useState<string | null>(null);
+    const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
+    const [showLevelUp, setShowLevelUp] = useState(false);
+
+    // === New State Variables ===
+    const [showEventModal, setShowEventModal] = useState(false);
+    const [currentEvent, setCurrentEvent] = useState<any>(null);
+    const [showSpecialMissionModal, setShowSpecialMissionModal] = useState(false);
+    const [specialMissions, setSpecialMissions] = useState<any[]>([]);
+    const [showWeekendModal, setShowWeekendModal] = useState(false);
+    const [activeSideMission, setActiveSideMission] = useState<SideMission | null>(null);
+    const [showSideMissionBanner, setShowSideMissionBanner] = useState(false);
+    const [activeSeasonalEvent, setActiveSeasonalEvent] = useState<any>(null);
+    const [dismissedSeasonalEvent, setDismissedSeasonalEvent] = useState(false);
+    const [userEvents, setUserEvents] = useState<any>({ triggeredToday: [], lastEventCheck: '' });
+    const [unlockedCharacters, setUnlockedCharacters] = useState<CharacterId[]>([]);
+    const [showReplayModal, setShowReplayModal] = useState(false);
+    const [replayMessages, setReplayMessages] = useState<Message[]>([]);
+    const scrollRef = useRef<HTMLDivElement>(null);
+    const isSendingRef = useRef(false);
+
+    const currentHistory = histories[currentCharacterId] || [];
+    const currentCharacter = CHARACTERS[currentCharacterId] || CHARACTERS[CharacterId.JACK];
+    const completedCount = Object.values(dailyProgress || {}).filter(Boolean).length;
+    const totalMissions = 6; // Updated for new characters
+
+    // --- Effects ---
+
+    // Save state to localStorage
+    useEffect(() => {
+        try {
+            const stateToSave = {
+                day, stats, histories, missionLogs, currentCharacterId, dailyProgress,
+                userEvents, unlockedCharacters
+            };
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
+        } catch (e) { console.error("Failed to save state", e); }
+    }, [day, stats, histories, missionLogs, currentCharacterId, dailyProgress, userEvents, unlockedCharacters]);
+
+    useEffect(() => {
+        if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }, [histories, currentCharacterId, isLoading]);
+
+    useEffect(() => {
+        setInputText('');
+        setError(null);
+    }, [currentCharacterId]);
+
+    // Random Event Check (on first load of the day)
+    useEffect(() => {
+        const today = new Date().toISOString().split('T')[0];
+        const lastCheck = userEvents.lastEventCheck || '';
+
+        if (lastCheck !== today) {
+            // Check for new random events
+            const randomEvent = getRandomEvent(userEvents.triggeredToday || []);
+            if (randomEvent) {
+                setCurrentEvent(randomEvent);
+                setShowEventModal(true);
+                setUserEvents({
+                    triggeredToday: [...(userEvents.triggeredToday || []), randomEvent.id],
+                    lastEventCheck: today
+                });
+            } else {
+                setUserEvents({ ...userEvents, lastEventCheck: today });
+            }
+        }
+    }, [day]);
+
+    // Special Mission Unlock Check
+    useEffect(() => {
+        const unlockableMissions = getUnlockableSpecialMissions(
+            stats,
+            specialMissions.map(m => m.id)
+        );
+
+        if (unlockableMissions.length > 0) {
+            setSpecialMissions(unlockableMissions);
+            setShowSpecialMissionModal(true);
+        }
+    }, [stats]);
+
+    // Seasonal Event Check
+    useEffect(() => {
+        const seasonalEvent = getActiveSeasonalEvent();
+        if (seasonalEvent && !dismissedSeasonalEvent) {
+            setActiveSeasonalEvent(seasonalEvent);
+        } else {
+            setActiveSeasonalEvent(null);
+        }
+    }, [day, dismissedSeasonalEvent]);
+
+    // Side Mission Expiration Check
+    useEffect(() => {
+        if (activeSideMission && activeSideMission.expiresAt < Date.now()) {
+            // Mission expired
+            setActiveSideMission(null);
+            setShowSideMissionBanner(false);
+        }
+    }, [activeSideMission]);
+
+    // Streak Logic
+    useEffect(() => {
+        const today = new Date().toISOString().split('T')[0];
+        if (stats.lastLoginDate !== today) {
+            const lastDate = new Date(stats.lastLoginDate || 0);
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            const yesterdayString = yesterday.toISOString().split('T')[0];
+
+            let newStreak = stats.streak;
+            if (stats.lastLoginDate === yesterdayString) {
+                // Consecutive login (handled when completing mission usually, but here checking login)
+                // Note: Simplistic approach. Usually streak updates on action completion.
+                // Let's update streak only on mission completion to make it meaningful.
+            } else if (stats.lastLoginDate && stats.lastLoginDate < yesterdayString) {
+                // Streak broken
+                newStreak = 0;
+                setStats(prev => ({ ...prev, streak: 0, lastLoginDate: today }));
+            }
+        }
+    }, []);
+
+    // --- Logic ---
+    const findMissionTitle = (history: Message[], currentDay: number): string => {
+        const regex = new RegExp(`\\*\\*【Day ${currentDay}: (.+?)】\\*\\*`);
+        for (let i = history.length - 1; i >= 0; i--) {
+            const match = history[i].text.match(regex);
+            if (match && match[1]) return match[1];
+        }
+        return "Secret Mission";
+    };
+
+    const handleSendMessage = async (text: string = inputText) => {
+        if (!text.trim() || isLoading || isSendingRef.current) return;
+        isSendingRef.current = true;
+        setError(null);
+
+        const userMessage: Message = { id: Date.now().toString(), sender: 'user', text: text, timestamp: Date.now() };
+
+        setHistories((prev) => ({ ...prev, [currentCharacterId]: [...(prev[currentCharacterId] || []), userMessage] }));
+        setInputText('');
+        setIsLoading(true);
+
+        try {
+            const contextHistory = histories[currentCharacterId] || [];
+            const historyForAI = [...contextHistory, userMessage];
+            const responseText = await generateResponse(
+                contextHistory,
+                currentCharacterId,
+                day,
+                text
+            );
+
+            let cleanedText = responseText;
+            if (responseText.includes('[MISSION_COMPLETE]')) {
+                cleanedText = responseText.replace('[MISSION_COMPLETE]', '');
+                const charEntry = CHARACTERS[currentCharacterId];
+                if (charEntry) {
+                    const charStat = charEntry.stat;
+                    setStats(prev => ({ ...prev, [charStat]: Math.min((prev[charStat] || 0) + 15, 100) }));
+                }
+                setDailyProgress(prev => ({ ...prev, [currentCharacterId]: true }));
+
+                const existingTitle = findMissionTitle(historyForAI, day);
+                const newLog: MissionLogEntry = {
+                    id: Date.now().toString(), day, characterId: currentCharacterId, title: existingTitle, completedAt: Date.now()
+                };
+                setMissionLogs(prev => {
+                    if (prev.some(log => log.day === day && log.characterId === currentCharacterId)) return prev;
+                    return [...prev, newLog];
+                });
+
+                // Day Clear Check
+                const nextProgress = { ...dailyProgress, [currentCharacterId]: true };
+                if (Object.values(nextProgress).every(Boolean)) {
+                    // Streak Update
+                    const today = new Date().toISOString().split('T')[0];
+                    if (stats.lastLoginDate !== today) {
+                        setStats(prev => ({ ...prev, streak: (prev.streak || 0) + 1, lastLoginDate: today }));
+                    }
+                    setShowLevelUp(true);
+                }
+            }
+
+            const aiMessage: Message = {
+                id: (Date.now() + 1).toString(), sender: 'ai', characterId: currentCharacterId, text: cleanedText, timestamp: Date.now()
+            };
+            setHistories((prev) => ({
+                ...prev, [currentCharacterId]: [...(prev[currentCharacterId] || []), aiMessage]
+            }));
+
+            // Google Driveにチャット履歴を保存
+            saveChatToDrive(currentCharacterId, [...historyForAI, aiMessage]);
+        } catch (err) {
+            setError("Network Glitch. Try again.");
+        } finally {
+            setIsLoading(false);
+            setTimeout(() => { isSendingRef.current = false; }, 100);
+        }
+    };
+
+    const saveChatToDrive = (charId: CharacterId, messages: Message[]) => {
+        const charName = CHARACTERS[charId]?.name || charId;
+        const markdown = formatChatAsMarkdown(charName, messages);
+        saveContent('chat', `${charName}_Day${day}`, markdown);
+    };
+
+    const formatChatAsMarkdown = (charName: string, messages: Message[]): string => {
+        let md = `# ${charName} - Day ${day}\n\n`;
+        messages.forEach(msg => {
+            const time = new Date(msg.timestamp).toLocaleTimeString('ja-JP');
+            if (msg.sender === 'user') {
+                md += `## 👤 User (${time})\n${msg.text}\n\n`;
+            } else {
+                md += `## 🤖 ${charName} (${time})\n${msg.text}\n\n`;
+            }
+        });
+        return md;
+    };
+
+    const handleDeleteLog = (id: string) => {
+        setMissionLogs(prev => prev.filter(log => log.id !== id));
+        setConfirmingDeleteId(null);
+    };
+
+    const handleNextDay = () => {
+        setShowLevelUp(false);
+        setDay(d => d + 1);
+        setDailyProgress(initialDailyProgress);
+        // Optional: Clear history for new day or keep it? Keeping it for context is better usually.
+        // But for clean slate feel:
+        // setHistories({ [CharacterId.JACK]: [], [CharacterId.HAL]: [], [CharacterId.SAKI]: [], [CharacterId.REN]: [] });
+    };
+
+
+    const handleStartMission = () => {
+        if (dailyProgress[currentCharacterId]) {
+            handleSendMessage("今日のノルマは達成済みだが、何か？");
+        } else {
+            handleSendMessage("今日のミッションを頼む");
+        }
+    };
+
+    const handleResetData = () => {
+        if (window.confirm("WARNING: 全データを初期化しますか？")) {
+            localStorage.removeItem(STORAGE_KEY);
+            localStorage.removeItem(REMINDER_STORAGE_KEY);
+            window.location.reload();
+        }
+    };
+
+    // === New Feature Handlers ===
+
+    // Event Handlers
+    const handleEventAccept = () => {
+        if (currentEvent?.statReward && currentEvent.statAmount) {
+            setStats(prev => ({ ...prev, [currentEvent.statReward]: Math.min((prev[currentEvent.statReward] || 0) + currentEvent.statAmount, 100) }));
+        }
+        setShowEventModal(false);
+        setCurrentEvent(null);
+    };
+
+    const handleEventDismiss = () => {
+        setShowEventModal(false);
+        setCurrentEvent(null);
+    };
+
+    // Special Mission Handlers
+    const handleSpecialMissionStart = (missionId: string, characterId?: CharacterId) => {
+        if (characterId) {
+            setCurrentCharacterId(characterId);
+            setShowSpecialMissionModal(false);
+        }
+    };
+
+    const handleSpecialMissionClose = () => {
+        setShowSpecialMissionModal(false);
+    };
+
+    // Weekend Selection Handlers
+    const handleWeekendSelect = (branch: StoryBranch) => {
+        // Store the selection for next week's missions
+        // For now, just close the modal
+        setShowWeekendModal(false);
+        if (branch !== 'solo') {
+            setCurrentCharacterId(branch);
+        }
+    };
+
+    // Side Mission Handlers
+    const handleSideMissionAccept = () => {
+        if (activeSideMission) {
+            setCurrentCharacterId(activeSideMission.characterId);
+            setShowSideMissionBanner(false);
+        }
+    };
+
+    const handleSideMissionDismiss = () => {
+        setShowSideMissionBanner(false);
+    };
+
+    // Seasonal Event Handlers
+    const handleSeasonalDismiss = () => {
+        setDismissedSeasonalEvent(true);
+    };
+
+    // Replay Handlers
+    const handleReplayMission = (missionId: string) => {
+        const log = missionLogs.find(l => l.id === missionId);
+        if (log?.messages) {
+            setReplayMessages(log.messages);
+            setShowReplayModal(true);
+            setShowLogModal(false);
+        }
+    };
+
+    // Notification Handler
+    const handleRequestNotifications = async () => {
+        const granted = await requestNotificationPermission();
+        if (granted) {
+            alert('通知が有効化されました！');
+        }
+    };
+
+    // --- Render ---
+    const renderMessageText = (text: string) => {
+        if (!text) return null;
+        return text.split('\n').map((line, i) => {
+            if (line.trim().startsWith('**[') && line.trim().endsWith(']**')) {
+                return <h3 key={i} className="text-pink-500 font-display text-lg mt-4 mb-2 -rotate-1 transform inline-block bg-white border-2 border-black px-2 shadow-[2px_2px_0_0_#000]">{line.replace(/\*\*/g, '')}</h3>;
+            }
+            if (line.trim().startsWith('**【') && line.trim().endsWith('】**')) {
+                return <div key={i} className="bg-yellow-300 border-2 border-black p-2 my-4 shadow-[4px_4px_0_0_#000]"><h2 className="text-lg font-black text-slate-900">{line.replace(/\*\*/g, '')}</h2></div>;
+            }
+            if (line.trim().startsWith('・')) {
+                return <li key={i} className="ml-4 text-slate-800 font-bold list-disc my-1">{line.replace('・', '')}</li>;
+            }
+            if (line.trim() === '---') {
+                return <hr key={i} className="border-t-2 border-dashed border-slate-300 my-4" />;
+            }
+            return <p key={i} className="mb-2 leading-relaxed text-slate-800 font-medium">{line}</p>;
+        });
+    };
+
+    // Determine dynamic colors based on character
+    const getCharTheme = (id: CharacterId) => {
+        switch (id) {
+            case CharacterId.JACK: return { bg: 'bg-rose-50', accent: 'text-rose-500', border: 'border-rose-400' };
+            case CharacterId.HAL: return { bg: 'bg-amber-50', accent: 'text-amber-600', border: 'border-amber-400' };
+            case CharacterId.SAKI: return { bg: 'bg-indigo-50', accent: 'text-indigo-600', border: 'border-indigo-400' };
+            case CharacterId.REN: return { bg: 'bg-emerald-50', accent: 'text-emerald-600', border: 'border-emerald-400' };
+            case CharacterId.OPERATOR: return { bg: 'bg-purple-50', accent: 'text-purple-500', border: 'border-purple-400' };
+            case CharacterId.HIDDEN: return { bg: 'bg-slate-100', accent: 'text-slate-400', border: 'border-slate-400' };
+            default: return { bg: 'bg-white', accent: 'text-black', border: 'border-black' };
+        }
+    }
+    const theme = getCharTheme(currentCharacterId);
+
+    const isApiKeyMissing = !import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY.includes('PLACEHOLDER');
+
+    return (
+        <div className="min-h-screen flex flex-col md:flex-row md:h-screen overflow-hidden relative">
+            {isApiKeyMissing && (
+                <div className="absolute top-0 left-0 w-full bg-red-600 text-white z-50 p-2 text-center font-black animate-pulse border-b-4 border-black">
+                    ⚠️ CRITICAL: API KEY IS MISSING or PLACEHOLDER! Edit .env.local and set VITE_GEMINI_API_KEY to your AIza... key.
+                </div>
+            )}
+
+            {/* New Modals */}
+            {showEventModal && currentEvent && <EventModal event={currentEvent} onAccept={handleEventAccept} onClose={handleEventDismiss} />}
+            {showSpecialMissionModal && <SpecialMissionModal missions={specialMissions} onStartMission={handleSpecialMissionStart} onClose={handleSpecialMissionClose} />}
+            {showWeekendModal && <WeekendModal week={day} onSelect={handleWeekendSelect} onClose={() => setShowWeekendModal(false)} />}
+            {activeSeasonalEvent && !dismissedSeasonalEvent && <SeasonalBanner event={activeSeasonalEvent} onDismiss={handleSeasonalDismiss} />}
+
+            {showLevelUp && <LevelUpModal day={day} onNext={handleNextDay} />}
+
