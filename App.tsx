@@ -1,12 +1,22 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { UserStats, Message, CharacterId, MissionLogEntry } from './types';
+import { UserStats, Message, CharacterId, MissionLogEntry, RandomEvent, UserEvents, SpecialMission, UserProgress, StoryBranch, WeekEndChoice, SideMission, SeasonalEvent } from './types';
 import { CHARACTERS } from './constants';
+import { getRandomEvent } from './randomEvents';
+import { getUnlockableSpecialMissions, SPECIAL_MISSIONS } from './specialMissions';
+import { generateSideMission } from './services/sideMissionService';
+import { getActiveSeasonalEvent } from './seasonalEvents';
 import StatsRadar from './components/StatsRadar';
 import CharacterSelector from './components/CharacterSelector';
 import LevelUpModal from './components/LevelUpModal';
+import EventModal from './components/EventModal';
+import SpecialMissionModal from './components/SpecialMissionModal';
+import WeekendModal from './components/WeekendModal';
+import SideMissionBanner from './components/SideMissionBanner';
+import SeasonalBanner from './components/SeasonalBanner';
+import TypewriterText from './components/TypewriterText';
 import { generateResponse } from './services/geminiService';
 import { saveContent } from './services/driveLogger';
-import { Send, Zap, Loader2, Star, AlertTriangle, Trash2, MessageCircle, Trophy, Bell, Archive, X, Menu, Calendar } from 'lucide-react';
+import { Send, Zap, Loader2, AlertTriangle, Trash2, Trophy, Archive, X, Menu, Calendar } from 'lucide-react';
 
 // Updated storage key for V2 data structure
 const STORAGE_KEY = 'CLOVER_PROTOCOL_STATE_V2';
@@ -42,22 +52,27 @@ const App: React.FC = () => {
         fun: 20,
         memory: 20,
         articulation: 20,
+        efficiency: 20,
         streak: 0,
         lastLoginDate: '',
     }));
 
-    const initialDailyProgress = {
+    const initialDailyProgress: Record<CharacterId, boolean> = {
         [CharacterId.JACK]: false,
         [CharacterId.HAL]: false,
         [CharacterId.SAKI]: false,
         [CharacterId.REN]: false,
+        [CharacterId.OPERATOR]: false,
+        [CharacterId.HIDDEN]: false,
     };
     const [dailyProgress, setDailyProgress] = useState<Record<CharacterId, boolean>>(() => loadState('dailyProgress', initialDailyProgress));
     const [histories, setHistories] = useState<Histories>(() => loadState('histories', {
         [CharacterId.JACK]: [], [CharacterId.HAL]: [], [CharacterId.SAKI]: [], [CharacterId.REN]: [],
+        [CharacterId.OPERATOR]: [], [CharacterId.HIDDEN]: [],
     }));
     const [missionLogs, setMissionLogs] = useState<MissionLogEntry[]>(() => loadState('missionLogs', []));
     const [currentCharacterId, setCurrentCharacterId] = useState<CharacterId>(() => loadState('currentCharacterId', CharacterId.JACK));
+    const [unlockedCharacters, setUnlockedCharacters] = useState<CharacterId[]>(() => loadState('unlockedCharacters', []));
 
     const [inputText, setInputText] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -70,21 +85,38 @@ const App: React.FC = () => {
     );
 
     const [showLevelUp, setShowLevelUp] = useState(false);
+    const [currentEvent, setCurrentEvent] = useState<RandomEvent | null>(null);
+    const [userEvents, setUserEvents] = useState<UserEvents>(() => loadState('userEvents', {
+        triggeredToday: [],
+        lastEventCheck: '',
+    }));
     const scrollRef = useRef<HTMLDivElement>(null);
     const isSendingRef = useRef(false);
+
+    const [showSpecialMission, setShowSpecialMission] = useState(false);
+    const [userProgress, setUserProgress] = useState<UserProgress>(() => loadState('userProgress', {
+        unlockedSpecialMissions: [],
+        completedSpecialMissions: [],
+    }));
+    const [showWeekend, setShowWeekend] = useState(false);
+    const [weekEndChoices, setWeekEndChoices] = useState<WeekEndChoice[]>(() => loadState('weekEndChoices', []));
+    const [activeSideMission, setActiveSideMission] = useState<SideMission | null>(null);
+    const [seasonalEvent, setSeasonalEvent] = useState<SeasonalEvent | null>(null);
+
+    const availableSpecialMissions = getUnlockableSpecialMissions(stats, userProgress.unlockedSpecialMissions);
 
     const currentHistory = histories[currentCharacterId] || [];
     const currentCharacter = CHARACTERS[currentCharacterId] || CHARACTERS[CharacterId.JACK];
     const completedCount = Object.values(dailyProgress || {}).filter(Boolean).length;
-    const totalMissions = 4;
+    const totalMissions = 6;
 
     // --- Effects ---
     useEffect(() => {
         try {
-            const stateToSave = { day, stats, histories, missionLogs, currentCharacterId, dailyProgress };
+            const stateToSave = { day, stats, histories, missionLogs, currentCharacterId, dailyProgress, unlockedCharacters, userEvents, userProgress, weekEndChoices };
             localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
         } catch (e) { console.error("Failed to save state", e); }
-    }, [day, stats, histories, missionLogs, currentCharacterId, dailyProgress]);
+    }, [day, stats, histories, missionLogs, currentCharacterId, dailyProgress, unlockedCharacters, userEvents, userProgress, weekEndChoices]);
 
     useEffect(() => {
         if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -117,7 +149,154 @@ const App: React.FC = () => {
         }
     }, []);
 
+    // Random Event Check on Login
+    useEffect(() => {
+        const today = new Date().toISOString().split('T')[0];
+        if (userEvents.lastEventCheck !== today) {
+            // 日が変わったら今日のイベントをリセット
+            const updatedEvents: UserEvents = {
+                triggeredToday: [],
+                lastEventCheck: today,
+            };
+            setUserEvents(updatedEvents);
+
+            // ランダムイベントチェック
+            const event = getRandomEvent([]);
+            if (event) {
+                setCurrentEvent(event);
+            }
+        }
+    }, []);
+
+    // Special Mission Unlock Check
+    useEffect(() => {
+        const unlockable = getUnlockableSpecialMissions(stats, userProgress.unlockedSpecialMissions);
+        if (unlockable.length > 0) {
+            setShowSpecialMission(true);
+            // 解放済みに追加
+            setUserProgress(prev => ({
+                ...prev,
+                unlockedSpecialMissions: [...prev.unlockedSpecialMissions, ...unlockable.map(m => m.id)]
+            }));
+        }
+    }, [stats]);
+
+    // Weekend Check (Saturday)
+    useEffect(() => {
+        const now = new Date();
+        const dayOfWeek = now.getDay(); // 0 = Sunday, 6 = Saturday
+        if (dayOfWeek === 6) {
+            const currentWeek = Math.floor(day / 7);
+            const alreadyChosen = weekEndChoices.find(c => c.week === currentWeek);
+            if (!alreadyChosen) {
+                setShowWeekend(true);
+            }
+        }
+    }, [day, weekEndChoices]);
+
+    // Seasonal Event Check
+    useEffect(() => {
+        const activeEvent = getActiveSeasonalEvent();
+        setSeasonalEvent(activeEvent);
+    }, []);
+
+    // Side Mission Check (occasionally)
+    useEffect(() => {
+        const mission = generateSideMission(day);
+        if (mission) {
+            setActiveSideMission(mission);
+        }
+    }, [day]);
+
     // --- Logic ---
+    const handleAcceptEvent = () => {
+        if (!currentEvent) return;
+
+        // ステータス報酬を付与
+        if (currentEvent.statReward && currentEvent.statAmount) {
+            setStats(prev => ({
+                ...prev,
+                [currentEvent.statReward!]: Math.min(prev[currentEvent.statReward!] + currentEvent.statAmount, 100)
+            }));
+        }
+
+        // イベントをトリガー済みに追加
+        setUserEvents(prev => ({
+            ...prev,
+            triggeredToday: [...prev.triggeredToday, currentEvent.id]
+        }));
+
+        setCurrentEvent(null);
+    };
+
+    const handleCloseEvent = () => {
+        setCurrentEvent(null);
+    };
+
+    const handleStartSpecialMission = (missionId: string, characterId?: CharacterId) => {
+        setShowSpecialMission(false);
+        if (characterId) {
+            setCurrentCharacterId(characterId);
+        }
+        // 特別ミッションをAIに依頼する
+        const mission = SPECIAL_MISSIONS.find(m => m.id === missionId);
+        if (mission) {
+            setTimeout(() => {
+                handleSendMessage(`特別ミッション「${mission.title}」を開始する`);
+            }, 300);
+        }
+    };
+
+    const handleCloseSpecialMission = () => {
+        setShowSpecialMission(false);
+    };
+
+    const handleSelectWeekendBranch = (branch: StoryBranch) => {
+        const currentWeek = Math.floor(day / 7);
+        setWeekEndChoices(prev => [...prev, { week: currentWeek, selectedBranch: branch, completed: true }]);
+        setShowWeekend(false);
+
+        if (branch !== 'solo') {
+            setCurrentCharacterId(branch);
+            setTimeout(() => {
+                handleSendMessage('週末ミッションを開始する');
+            }, 300);
+        }
+    };
+
+    const handleCloseWeekend = () => {
+        setShowWeekend(false);
+    };
+
+    const handleAcceptSideMission = () => {
+        if (!activeSideMission) return;
+
+        // ステータス報酬を付与
+        if (activeSideMission.statReward && activeSideMission.statAmount) {
+            setStats(prev => ({
+                ...prev,
+                [activeSideMission.statReward]: Math.min(prev[activeSideMission.statReward] + activeSideMission.statAmount, 100)
+            }));
+        }
+
+        // 完了に設定
+        setActiveSideMission(prev => prev ? { ...prev, completed: true } : null);
+
+        // キャラクターに切り替えてAIに依頼
+        setCurrentCharacterId(activeSideMission.characterId);
+        setTimeout(() => {
+            handleSendMessage(`ボーナスミッション「${activeSideMission.title}」を開始する`);
+        }, 300);
+    };
+
+    const handleDismissSideMission = () => {
+        setActiveSideMission(null);
+    };
+
+    const handleDismissSeasonalEvent = () => {
+        setSeasonalEvent(null);
+    };
+
     const findMissionTitle = (history: Message[], currentDay: number): string => {
         const regex = new RegExp(`\\*\\*【Day ${currentDay}: (.+?)】\\*\\*`);
         for (let i = history.length - 1; i >= 0; i--) {
@@ -141,7 +320,7 @@ const App: React.FC = () => {
         try {
             const contextHistory = histories[currentCharacterId] || [];
             const historyForAI = [...contextHistory, userMessage];
-            const responseText = await generateResponse(contextHistory, currentCharacterId, day, text);
+            const responseText = await generateResponse(contextHistory, currentCharacterId, day, text, stats);
 
             let cleanedText = responseText;
             if (responseText.includes('[MISSION_COMPLETE]')) {
@@ -273,16 +452,24 @@ const App: React.FC = () => {
     }
     const theme = getCharTheme(currentCharacterId);
 
-    const isApiKeyMissing = !import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY.includes('PLACEHOLDER');
-
     return (
         <div className="min-h-screen flex flex-col md:flex-row md:h-screen overflow-hidden relative">
-            {isApiKeyMissing && (
-                <div className="absolute top-0 left-0 w-full bg-red-600 text-white z-50 p-2 text-center font-black animate-pulse border-b-4 border-black">
-                    ⚠️ CRITICAL: API KEY IS MISSING or PLACEHOLDER! Edit .env.local and set VITE_GEMINI_API_KEY to your AIza... key.
-                </div>
-            )}
             {showLevelUp && <LevelUpModal day={day} onNext={handleNextDay} />}
+            {currentEvent && <EventModal event={currentEvent} onAccept={handleAcceptEvent} onClose={handleCloseEvent} />}
+            {showSpecialMission && (
+                <SpecialMissionModal
+                    missions={getUnlockableSpecialMissions(stats, userProgress.unlockedSpecialMissions)}
+                    onStartMission={handleStartSpecialMission}
+                    onClose={handleCloseSpecialMission}
+                />
+            )}
+            {showWeekend && (
+                <WeekendModal
+                    week={Math.floor(day / 7)}
+                    onSelect={handleSelectWeekendBranch}
+                    onClose={handleCloseWeekend}
+                />
+            )}
 
 
             {/* --- Overlay Menu (Mobile) --- */}
@@ -359,7 +546,7 @@ const App: React.FC = () => {
                             <div className="w-3 h-3 bg-red-500 rounded-full animate-ping"></div>
                             <span className="text-xs font-black bg-black text-white px-2 py-0.5">SELECT AGENT</span>
                         </div>
-                        <CharacterSelector selectedId={currentCharacterId} onSelect={setCurrentCharacterId} dailyProgress={dailyProgress} />
+                        <CharacterSelector selectedId={currentCharacterId} onSelect={setCurrentCharacterId} dailyProgress={dailyProgress} unlockedCharacters={unlockedCharacters} />
                     </div>
                 </div>
 
@@ -382,15 +569,37 @@ const App: React.FC = () => {
                 </div>
 
                 {/* Chat Header */}
-                <div className="p-4 border-b-4 border-black bg-white relative z-10 flex items-center justify-between shadow-sm">
-                    <div className="flex items-center gap-3">
-                        <div className={`w-3 h-3 rounded-full ${isLoading ? 'bg-yellow-400 animate-pulse' : 'bg-emerald-500'}`}></div>
-                        <span className="font-mono font-bold text-sm tracking-widest text-slate-500">
-                            CONNECTING TO: <span className="text-black bg-yellow-300 px-1">{currentCharacter.name.toUpperCase()}</span>
-                        </span>
-                    </div>
-                    <div className="text-xs font-black border-2 border-black px-2 py-1 bg-slate-200">
-                        SECURE LINE
+                <div className="bg-white relative z-10">
+                    {/* Side Mission Banner */}
+                    {activeSideMission && (
+                        <div className="mx-4 mt-4">
+                            <SideMissionBanner
+                                mission={activeSideMission}
+                                onAccept={handleAcceptSideMission}
+                                onDismiss={handleDismissSideMission}
+                            />
+                        </div>
+                    )}
+
+                    {/* Seasonal Event Banner */}
+                    {seasonalEvent && (
+                        <SeasonalBanner
+                            event={seasonalEvent}
+                            onDismiss={handleDismissSeasonalEvent}
+                        />
+                    )}
+
+                    {/* Main Chat Header */}
+                    <div className="p-4 border-b-4 border-black flex items-center justify-between shadow-sm">
+                        <div className="flex items-center gap-3">
+                            <div className={`w-3 h-3 rounded-full ${isLoading ? 'bg-yellow-400 animate-pulse' : 'bg-emerald-500'}`}></div>
+                            <span className="font-mono font-bold text-sm tracking-widest text-slate-500">
+                                CONNECTING TO: <span className="text-black bg-yellow-300 px-1">{currentCharacter.name.toUpperCase()}</span>
+                            </span>
+                        </div>
+                        <div className="text-xs font-black border-2 border-black px-2 py-1 bg-slate-200">
+                            SECURE LINE
+                        </div>
                     </div>
                 </div>
 
@@ -441,7 +650,11 @@ const App: React.FC = () => {
                                             </div>
                                         )}
                                         <div className="font-medium text-sm md:text-base">
-                                            {renderMessageText(msg.text)}
+                                            {msg.sender === 'ai' ? (
+                                                <TypewriterText text={msg.text} speed={20} />
+                                            ) : (
+                                                renderMessageText(msg.text)
+                                            )}
                                         </div>
                                     </div>
                                 </div>

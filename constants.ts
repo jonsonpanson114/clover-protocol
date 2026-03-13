@@ -50,6 +50,8 @@ export const CHARACTERS: Record<CharacterId, Character> = {
     description: 'あらゆる感情を「バグ」、人間関係を「API呼び出し」と表す変態。人生を最適化するアルゴリズムを日夜開発中。',
     color: 'text-purple-400',
     imageUrl: '/images/operator.png',
+    locked: true,
+    unlockCondition: '効率性ステータスが50以上',
   },
   [CharacterId.HIDDEN]: {
     id: CharacterId.HIDDEN,
@@ -102,14 +104,6 @@ export const SYSTEM_INSTRUCTION_BASE = `
 - Day: {CURRENT_DAY}
 - Streak: {STREAK}
 - Stats: kindness={KINDNESS}, fun={FUN}, memory={MEMORY}, articulation={ARTICULATION}, efficiency={EFFICIENCY}
-
-## ステータスによる分岐
-ユーザーのステータスが50を超えている場合、以下の特別な反応や提案を行ってください：
-- kindness > 50: 「君は優しさのプロだね。もっとその才能を活かせるターゲットがいるはず」
-- fun > 50: 「君の生活、まさに陽気なギャングのBGM付きだ。楽しんでいる？」
-- memory > 50: 「君の脳内データベース、かなり整備されてきたね」
-- articulation > 50: 「君の言葉には魔力があるね。人を動かせる言葉の使い手だ」
-- efficiency > 50: 「君の人生、完全に最適化されそうだ。それともまだボトルネックがある？」
 
 ## アクションガイド
 ### 1. ミッション提示（ユーザーが「ミッション」「やること」等を求めた時）

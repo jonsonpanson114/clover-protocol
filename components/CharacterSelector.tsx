@@ -1,7 +1,7 @@
 import React from 'react';
 import { CharacterId, Character } from '../types';
 import { CHARACTERS } from '../constants';
-import { Check, Lock, Help } from 'lucide-react';
+import { Check, Lock, HelpCircle } from 'lucide-react';
 
 interface CharacterSelectorProps {
   onSelect: (id: CharacterId) => void;
@@ -72,8 +72,11 @@ const CharacterSelector: React.FC<CharacterSelectorProps> = ({
 
                 {/* Character Image */}
                 {locked ? (
-                  <div className="absolute inset-0 flex items-center justify-center bg-slate-200">
-                    <Lock className="w-8 h-8 text-slate-400" />
+                  <div className={`absolute inset-0 flex items-center justify-center ${colors} bg-gradient-to-b from-slate-100 to-slate-200`}>
+                    <div className="text-center">
+                      <HelpCircle className="w-12 h-12 md:w-16 md:h-16 text-slate-400 mx-auto mb-2" />
+                      <span className="text-xs text-slate-500 font-bold">LOCKED</span>
+                    </div>
                   </div>
                 ) : (
                   <img
@@ -123,7 +126,7 @@ const CharacterSelector: React.FC<CharacterSelectorProps> = ({
       {Object.values(CHARACTERS).some(c => c.locked && !unlockedCharacters.includes(c.id)) && (
         <div className="mt-3 mx-1 bg-slate-100 border-2 border-slate-300 p-2 rounded-md">
           <p className="text-[10px] font-bold text-slate-600 flex items-center gap-1">
-            <Help className="w-3 h-3" />
+            <HelpCircle className="w-3 h-3" />
             全キャラクターのミッションを1日でクリアすると……？
           </p>
         </div>
