@@ -650,11 +650,7 @@ const App: React.FC = () => {
                                             </div>
                                         )}
                                         <div className="font-medium text-sm md:text-base">
-                                            {msg.sender === 'ai' ? (
-                                                <TypewriterText text={msg.text} speed={20} />
-                                            ) : (
-                                                renderMessageText(msg.text)
-                                            )}
+                                            {renderMessageText(msg.text)}
                                         </div>
                                     </div>
                                 </div>
