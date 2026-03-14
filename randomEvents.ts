@@ -104,8 +104,8 @@ export const RANDOM_EVENTS: RandomEvent[] = [
   {
     id: 'special_encounter_1',
     type: 'special_encounter',
-    title: '謎の電話',
-    description: '「君が探しているものは、ここではない。でも、近くにはあるかもしれない」と言って電話が切れた。',
+    title: '間違い電話の物理学',
+    description: '「君が探しているのは、ここじゃない。でも、並行世界（パラレルワールド）では既に見つかっているかもしれない」と言って電話が切れた。',
     statReward: 'memory',
     statAmount: 15,
     probability: 0.03,
@@ -113,8 +113,8 @@ export const RANDOM_EVENTS: RandomEvent[] = [
   {
     id: 'special_encounter_2',
     type: 'special_encounter',
-    title: '夢の中の会話',
-    description: '夢の中で誰かと話していた。「忘れないでくれ」と言っていた気がする。',
+    title: '夢の中の遺留品',
+    description: '夢の中で古い友人と話していた。「忘れないでくれ。あの時、コインロッカーの鍵を預けたのは君だ」と言っていた気がする。',
     statReward: 'kindness',
     statAmount: 15,
     probability: 0.03,
@@ -122,8 +122,8 @@ export const RANDOM_EVENTS: RandomEvent[] = [
   {
     id: 'special_encounter_3',
     type: 'special_encounter',
-    title: '路地裏のギャング',
-    description: '「おい、面白い賭けに興味あるかい？」声をかけられたが、その姿はすぐに霧散した。',
+    title: '路地裏の確率論者',
+    description: '「おい、人生を賭けるには最高のオッズだぜ？」声をかけられたが、その姿を追おうとすると霧の向こうに消えた。',
     statReward: 'fun',
     statAmount: 15,
     probability: 0.03,
@@ -131,8 +131,8 @@ export const RANDOM_EVENTS: RandomEvent[] = [
   {
     id: 'special_encounter_4',
     type: 'special_encounter',
-    title: '本屋での出会い',
-    description: '棚の間から見えたのは……誰だ？ 一瞬で消えたが、確かに誰かいた。',
+    title: '本屋の亡霊',
+    description: '棚の間から見えたのは、死神のような目をした男だった。一瞬で消えたが、置かれた本には君の未来が書かれているようだった。',
     statReward: 'articulation',
     statAmount: 15,
     probability: 0.03,

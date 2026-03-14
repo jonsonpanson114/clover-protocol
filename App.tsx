@@ -16,7 +16,7 @@ import SeasonalBanner from './components/SeasonalBanner';
 import TypewriterText from './components/TypewriterText';
 import { generateResponse } from './services/geminiService';
 import { saveContent } from './services/driveLogger';
-import { Send, Zap, Loader2, AlertTriangle, Trash2, Trophy, Archive, X, Menu, Calendar } from 'lucide-react';
+import { Send, Zap, Loader2, AlertTriangle, Trash2, Trophy, Archive, X, Menu, Calendar, Book, Sparkles } from 'lucide-react';
 
 // Updated storage key for V2 data structure
 const STORAGE_KEY = 'CLOVER_PROTOCOL_STATE_V2';
@@ -77,6 +77,7 @@ const App: React.FC = () => {
     const [inputText, setInputText] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [showLogModal, setShowLogModal] = useState(false);
+    const [activeLogTab, setActiveLogTab] = useState<'missions' | 'trivia'>('missions');
     const [showMenu, setShowMenu] = useState(false); // Mobile Menu Toggle
     const [error, setError] = useState<string | null>(null);
     const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
@@ -306,6 +307,16 @@ const App: React.FC = () => {
         return "Secret Mission";
     };
 
+    const findMissionTrivia = (history: Message[]): string => {
+        // ストーリーパートを抽出する正規表現
+        const regex = /\*\*\[ストーリーパート\]\*\*\n?([\s\S]+?)(?=\n?\*\*\[今日の指令\]\*\*|$)/;
+        for (let i = history.length - 1; i >= 0; i--) {
+            const match = history[i].text.match(regex);
+            if (match && match[1]) return match[1].trim();
+        }
+        return "";
+    };
+
     const handleSendMessage = async (text: string = inputText) => {
         if (!text.trim() || isLoading || isSendingRef.current) return;
         isSendingRef.current = true;
@@ -333,8 +344,9 @@ const App: React.FC = () => {
                 setDailyProgress(prev => ({ ...prev, [currentCharacterId]: true }));
 
                 const existingTitle = findMissionTitle(historyForAI, day);
+                const trivia = findMissionTrivia(historyForAI);
                 const newLog: MissionLogEntry = {
-                    id: Date.now().toString(), day, characterId: currentCharacterId, title: existingTitle, completedAt: Date.now()
+                    id: Date.now().toString(), day, characterId: currentCharacterId, title: existingTitle, trivia, completedAt: Date.now()
                 };
                 setMissionLogs(prev => {
                     if (prev.some(log => log.day === day && log.characterId === currentCharacterId)) return prev;
@@ -350,6 +362,21 @@ const App: React.FC = () => {
                         setStats(prev => ({ ...prev, streak: prev.streak + 1, lastLoginDate: today }));
                     }
                     setShowLevelUp(true);
+
+                    // --- Character Unlock: HIDDEN ---
+                    if (!unlockedCharacters.includes(CharacterId.HIDDEN)) {
+                      setUnlockedCharacters(prev => [...prev, CharacterId.HIDDEN]);
+                    }
+                }
+
+                // --- Character Unlock: OPERATOR ---
+                const nextStats = { ...stats };
+                if (charEntry) {
+                   nextStats[charEntry.stat] = Math.min(nextStats[charEntry.stat] + 15, 100);
+                }
+                
+                if (nextStats.efficiency >= 50 && !unlockedCharacters.includes(CharacterId.OPERATOR)) {
+                   setUnlockedCharacters(prev => [...prev, CharacterId.OPERATOR]);
                 }
             }
 
@@ -716,81 +743,128 @@ const App: React.FC = () => {
                                 <X className="w-5 h-5" />
                             </button>
                         </div>
-                        <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-white">
-                            {missionLogs.length === 0 ? (
-                                <div className="text-center py-10 font-mono font-bold text-slate-400 border-2 border-dashed border-slate-300">
-                                    NO DATA FOUND
-                                </div>
-                            ) : (
-                                (() => {
-                                    const grouped = missionLogs.reduce((acc, log) => {
-                                        const dateStr = new Date(log.completedAt).toLocaleDateString();
-                                        if (!acc[dateStr]) acc[dateStr] = [];
-                                        acc[dateStr].push(log);
-                                        return acc;
-                                    }, {} as Record<string, MissionLogEntry[]>);
+                        
+                        {/* Tab Switcher */}
+                        <div className="flex border-b-4 border-black bg-slate-100">
+                            <button 
+                                onClick={() => setActiveLogTab('missions')}
+                                className={`flex-1 py-3 font-black text-sm flex items-center justify-center gap-2 transition-all ${activeLogTab === 'missions' ? 'bg-white' : 'hover:bg-slate-200'}`}
+                            >
+                                <Trophy className="w-4 h-4" /> MISSIONS
+                            </button>
+                            <button 
+                                onClick={() => setActiveLogTab('trivia')}
+                                className={`flex-1 py-3 font-black text-sm flex items-center justify-center gap-2 transition-all ${activeLogTab === 'trivia' ? 'bg-white' : 'hover:bg-slate-200'}`}
+                            >
+                                <Sparkles className="w-4 h-4" /> KNOWLEDGE PIECES
+                            </button>
+                        </div>
 
-                                    return (Object.entries(grouped) as [string, MissionLogEntry[]][])
-                                        .sort((a, b) => new Date(b[0]).getTime() - new Date(a[0]).getTime())
-                                        .map(([date, logs]) => (
-                                            <div key={date} className="space-y-3">
-                                                <div className="sticky top-0 z-10 bg-slate-100/90 backdrop-blur-sm border-y border-slate-300 px-3 py-1 -mx-6">
-                                                    <span className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                                                        <Calendar className="w-3 h-3" /> {date}
-                                                    </span>
-                                                </div>
-                                                <div className="space-y-4">
-                                                    {logs.sort((a, b) => b.completedAt - a.completedAt).map((log) => {
-                                                        const char = CHARACTERS[log.characterId];
-                                                        return (
-                                                            <div key={log.id} className="neo-box p-4 flex items-center gap-4 bg-white">
-                                                                <div className="w-14 h-14 border-2 border-black overflow-hidden bg-slate-200 shrink-0">
-                                                                    <img src={char.imageUrl} alt={char.name} className="w-full h-full object-cover grayscale" />
-                                                                </div>
-                                                                <div className="flex-1 min-w-0">
-                                                                    <div className="flex gap-2 mb-1">
-                                                                        <span className="bg-black text-white text-[10px] font-black px-1.5 py-0.5">DAY {log.day}</span>
-                                                                        <span className="bg-slate-200 text-black text-[10px] font-bold px-1.5 py-0.5">{new Date(log.completedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-white">
+                            {activeLogTab === 'missions' ? (
+                                missionLogs.length === 0 ? (
+                                    <div className="text-center py-10 font-mono font-bold text-slate-400 border-2 border-dashed border-slate-300">
+                                        NO MISSION DATA
+                                    </div>
+                                ) : (
+                                    (() => {
+                                        const grouped = missionLogs.reduce((acc, log) => {
+                                            const dateStr = new Date(log.completedAt).toLocaleDateString();
+                                            if (!acc[dateStr]) acc[dateStr] = [];
+                                            acc[dateStr].push(log);
+                                            return acc;
+                                        }, {} as Record<string, MissionLogEntry[]>);
+
+                                        return (Object.entries(grouped) as [string, MissionLogEntry[]][])
+                                            .sort((a, b) => new Date(b[0]).getTime() - new Date(a[0]).getTime())
+                                            .map(([date, logs]) => (
+                                                <div key={date} className="space-y-3">
+                                                    <div className="sticky top-0 z-10 bg-slate-100/90 backdrop-blur-sm border-y border-slate-300 px-3 py-1 -mx-6">
+                                                        <span className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                                                            <Calendar className="w-3 h-3" /> {date}
+                                                        </span>
+                                                    </div>
+                                                    <div className="space-y-4">
+                                                        {logs.sort((a, b) => b.completedAt - a.completedAt).map((log) => {
+                                                            const char = CHARACTERS[log.characterId];
+                                                            return (
+                                                                <div key={log.id} className="neo-box p-4 flex items-center gap-4 bg-white">
+                                                                    <div className="w-14 h-14 border-2 border-black overflow-hidden bg-slate-200 shrink-0">
+                                                                        <img src={char.imageUrl} alt={char.name} className="w-full h-full object-cover grayscale" />
                                                                     </div>
-                                                                    <h3 className="font-bold text-base truncate">{log.title}</h3>
-                                                                    <p className="text-[10px] font-mono text-slate-500">HANDLER: {char.name}</p>
-                                                                </div>
-                                                                <div className="flex items-center gap-2">
-                                                                    {confirmingDeleteId === log.id ? (
-                                                                        <div className="flex items-center gap-1 animate-in slide-in-from-right-2">
-                                                                            <button
-                                                                                onClick={() => handleDeleteLog(log.id)}
-                                                                                className="bg-rose-500 text-white text-[10px] font-black px-2 py-1 border-2 border-black shadow-[2px_2px_0_0_#000] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all"
-                                                                            >
-                                                                                消去
-                                                                            </button>
-                                                                            <button
-                                                                                onClick={() => setConfirmingDeleteId(null)}
-                                                                                className="bg-slate-200 text-black text-[10px] font-black px-2 py-1 border-2 border-black shadow-[2px_2px_0_0_#000] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all"
-                                                                            >
-                                                                                却下
-                                                                            </button>
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <div className="flex gap-2 mb-1">
+                                                                            <span className="bg-black text-white text-[10px] font-black px-1.5 py-0.5">DAY {log.day}</span>
+                                                                            <span className="bg-slate-200 text-black text-[10px] font-bold px-1.5 py-0.5">{new Date(log.completedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                                                         </div>
-                                                                    ) : (
-                                                                        <>
-                                                                            <Trophy className="w-5 h-5 text-yellow-500 fill-yellow-500" />
-                                                                            <button
-                                                                                onClick={() => setConfirmingDeleteId(log.id)}
-                                                                                className="p-1.5 hover:bg-rose-100 text-slate-400 hover:text-rose-600 rounded-md transition-colors"
-                                                                                title="削除"
-                                                                            >
-                                                                                <Trash2 className="w-4 h-4" />
-                                                                            </button>
-                                                                        </>
-                                                                    )}
+                                                                        <h3 className="font-bold text-base truncate">{log.title}</h3>
+                                                                        <p className="text-[10px] font-mono text-slate-500">HANDLER: {char.name}</p>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-2">
+                                                                        {confirmingDeleteId === log.id ? (
+                                                                            <div className="flex items-center gap-1 animate-in slide-in-from-right-2">
+                                                                                <button
+                                                                                    onClick={() => handleDeleteLog(log.id)}
+                                                                                    className="bg-rose-500 text-white text-[10px] font-black px-2 py-1 border-2 border-black shadow-[2px_2px_0_0_#000] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all"
+                                                                                >
+                                                                                    消去
+                                                                                </button>
+                                                                                <button
+                                                                                    onClick={() => setConfirmingDeleteId(null)}
+                                                                                    className="bg-slate-200 text-black text-[10px] font-black px-2 py-1 border-2 border-black shadow-[2px_2px_0_0_#000] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all"
+                                                                                >
+                                                                                    却下
+                                                                                </button>
+                                                                            </div>
+                                                                        ) : (
+                                                                            <>
+                                                                                <Trophy className="w-5 h-5 text-yellow-500 fill-yellow-500" />
+                                                                                <button
+                                                                                    onClick={() => setConfirmingDeleteId(log.id)}
+                                                                                    className="p-1.5 hover:bg-rose-100 text-slate-400 hover:text-rose-600 rounded-md transition-colors"
+                                                                                    title="削除"
+                                                                                >
+                                                                                    <Trash2 className="w-4 h-4" />
+                                                                                </button>
+                                                                            </>
+                                                                        )}
+                                                                    </div>
                                                                 </div>
-                                                            </div>
-                                                        );
-                                                    })}
+                                                            );
+                                                        })}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        ));
-                                })()
+                                            ));
+                                    })()
+                                )
+                            ) : (
+                                /* Trivia Tab Content */
+                                <div className="space-y-4">
+                                    {missionLogs.filter(l => l.trivia).length === 0 ? (
+                                        <div className="text-center py-10 font-mono font-bold text-slate-400 border-2 border-dashed border-slate-300">
+                                            NO KNOWLEDGE COLLECTED
+                                        </div>
+                                    ) : (
+                                        missionLogs.filter(l => l.trivia).map((log) => {
+                                            const char = CHARACTERS[log.characterId];
+                                            return (
+                                                <div key={log.id} className="neo-box p-5 bg-slate-50 border-2 border-black border-l-8" style={{ borderLeftColor: char.color.includes('rose') ? '#fb7185' : char.color.includes('amber') ? '#fbbf24' : char.color.includes('indigo') ? '#818cf8' : '#34d399' }}>
+                                                    <div className="flex items-center gap-2 mb-3">
+                                                        <Book className="w-4 h-4 text-slate-400" />
+                                                        <span className="text-[10px] font-black bg-black text-white px-1.5 py-0.5">FRAGMENT FR-D{log.day}</span>
+                                                        <span className="text-[10px] font-bold text-slate-500 italic ml-auto">{char.role}</span>
+                                                    </div>
+                                                    <blockquote className="text-sm font-bold text-slate-800 leading-relaxed pl-4 border-l-2 border-slate-300 italic">
+                                                        "{log.trivia}"
+                                                    </blockquote>
+                                                    <div className="mt-3 text-right">
+                                                        <p className="text-[10px] font-black text-slate-400">— {char.name}</p>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                </div>
                             )}
                         </div>
                     </div>

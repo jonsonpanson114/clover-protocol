@@ -53,6 +53,7 @@ export interface MissionLogEntry {
   characterId: CharacterId;
   title: string;
   description?: string;
+  trivia?: string; // New: To store the Isaka-style intro story
   completedAt: number;
   messages?: Message[];
   isSpecial?: boolean;
