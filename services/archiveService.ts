@@ -133,7 +133,7 @@ export const groupByDate = (logs: MissionLogEntry[]): Record<string, MissionLogE
     if (!acc[dateStr]) acc[dateStr] = [];
     acc[dateStr].push(log);
     return acc;
-  }, {} as Record<string, MissionLogEntry[]>); {} as Record<string, MissionLogEntry[]>);
+  }, {} as Record<string, MissionLogEntry[]>);
 };
 
 /**

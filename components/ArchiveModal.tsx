@@ -174,7 +174,9 @@ const ArchiveModal: React.FC<ArchiveModalProps> = ({ logs, onDelete, onReplay, o
             <div className="space-y-6">
               {Object.entries(groupedLogs)
                 .sort(([a], [b]) => new Date(b).getTime() - new Date(a).getTime())
-                .map(([date, dateLogs]) => (
+                .map(([date, dateLogs]) => {
+                  const missions = dateLogs as MissionLogEntry[];
+                  return (
                   <div key={date} className="space-y-4">
                     {/* Date Header */}
                     <div className="sticky top-0 z-10 bg-slate-100/90 backdrop-blur-sm border-y-2 border-black px-4 py-2 -mx-6">
@@ -185,7 +187,7 @@ const ArchiveModal: React.FC<ArchiveModalProps> = ({ logs, onDelete, onReplay, o
 
                     {/* Mission Cards */}
                     <div className="space-y-3">
-                      {dateLogs.map((log) => {
+                      {missions.map((log) => {
                         const char = CHARACTERS[log.characterId];
                         const isDeleting = confirmingDeleteId === log.id;
 
@@ -276,7 +278,8 @@ const ArchiveModal: React.FC<ArchiveModalProps> = ({ logs, onDelete, onReplay, o
                       })}
                     </div>
                   </div>
-                ))}
+                    );
+                })}
             </div>
           )}
         </div>
