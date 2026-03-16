@@ -1,9 +1,7 @@
 import { Message, CharacterId } from '../types';
 import { sendLog } from './driveLogger';
 
-const API_BASE_URL = typeof window !== 'undefined' && window.location.hostname !== 'localhost'
-  ? '/api'
-  : 'http://localhost:3000/api';
+const API_BASE_URL = '/api';
 
 console.log('[GeminiService] API_BASE_URL:', API_BASE_URL);
 
