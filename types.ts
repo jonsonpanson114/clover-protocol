@@ -20,6 +20,13 @@ export interface Character {
   unlockCondition?: string; // 解放条件の説明
 }
 
+export interface MissionReminder {
+  id: string;
+  missionTitle: string;
+  targetTime: number; // Unix timestamp
+  characterId: CharacterId;
+}
+
 export interface UserStats {
   kindness: number;
   fun: number;
@@ -28,6 +35,7 @@ export interface UserStats {
   efficiency: number;
   streak: number;
   lastLoginDate: string; // YYYY-MM-DD format
+  reminders?: MissionReminder[]; // New: Active mission reminders
 }
 
 export interface Message {

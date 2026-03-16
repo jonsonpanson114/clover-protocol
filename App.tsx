@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { UserStats, Message, CharacterId, MissionLogEntry, RandomEvent, UserEvents, SpecialMission, UserProgress, StoryBranch, WeekEndChoice, SideMission, SeasonalEvent } from './types';
+import { UserStats, Message, CharacterId, MissionLogEntry, RandomEvent, UserEvents, SpecialMission, UserProgress, StoryBranch, WeekEndChoice, SideMission, SeasonalEvent, MissionReminder } from './types';
 import { CHARACTERS } from './constants';
 import { getRandomEvent } from './randomEvents';
 import { getUnlockableSpecialMissions, SPECIAL_MISSIONS } from './specialMissions';
@@ -16,7 +16,7 @@ import SeasonalBanner from './components/SeasonalBanner';
 import TypewriterText from './components/TypewriterText';
 import { generateResponse } from './services/geminiService';
 import { saveContent } from './services/driveLogger';
-import { Send, Zap, Loader2, AlertTriangle, Trash2, Trophy, Archive, X, Menu, Calendar, Book, Sparkles } from 'lucide-react';
+import { Send, Zap, Loader2, AlertTriangle, Trash2, Trophy, Archive, X, Menu, Calendar, Book, Sparkles, Bell } from 'lucide-react';
 
 // Updated storage key for V2 data structure
 const STORAGE_KEY = 'CLOVER_PROTOCOL_STATE_V2';
@@ -95,6 +95,7 @@ const App: React.FC = () => {
     const isSendingRef = useRef(false);
 
     const [showSpecialMission, setShowSpecialMission] = useState(false);
+    const [showReminderPicker, setShowReminderPicker] = useState<string | null>(null); // Message ID for which picker is shown
     const [userProgress, setUserProgress] = useState<UserProgress>(() => loadState('userProgress', {
         unlockedSpecialMissions: [],
         completedSpecialMissions: [],
@@ -209,6 +210,35 @@ const App: React.FC = () => {
         }
     }, [day]);
 
+    // Reminder Check Effect
+    useEffect(() => {
+        if (notificationPermission !== 'granted') return;
+
+        const interval = setInterval(() => {
+            const now = Date.now();
+            const activeReminders = stats.reminders || [];
+            
+            activeReminders.forEach(reminder => {
+                if (now >= reminder.targetTime && now < reminder.targetTime + 65000) { // Notify within 1 minute window
+                    new Notification("CLOVER PROTOCOL", {
+                        body: `指令の時間だぜ: ${reminder.missionTitle}`,
+                        icon: '/pwa-192x192.png'
+                    });
+                }
+            });
+
+            // 過去のリマインダーを除去
+            if (activeReminders.some(r => now > r.targetTime + 60000)) {
+                setStats(prev => ({
+                    ...prev,
+                    reminders: (prev.reminders || []).filter(r => now <= r.targetTime + 60000)
+                }));
+            }
+        }, 30000); // 30秒ごとにチェック
+
+        return () => clearInterval(interval);
+    }, [stats.reminders, notificationPermission]);
+
     // --- Logic ---
     const handleAcceptEvent = () => {
         if (!currentEvent) return;
@@ -246,6 +276,44 @@ const App: React.FC = () => {
                 handleSendMessage(`特別ミッション「${mission.title}」を開始する`);
             }, 300);
         }
+    };
+
+    const requestNotificationPermission = async () => {
+        if (typeof Notification !== 'undefined') {
+            const permission = await Notification.requestPermission();
+            setNotificationPermission(permission);
+            return permission === 'granted';
+        }
+        return false;
+    };
+
+    const handleSetReminder = async (minutes: number) => {
+        let permission = notificationPermission;
+        if (permission === 'default') {
+            const granted = await requestNotificationPermission();
+            if (!granted) return;
+        } else if (permission === 'denied') {
+            setError("通知がブロックされています。ブラウザの設定から許可してください。");
+            return;
+        }
+
+        const missionTitle = findMissionTitle(currentHistory, day);
+        const targetTime = Date.now() + minutes * 60000;
+        
+        const newReminder: MissionReminder = {
+            id: Date.now().toString(),
+            missionTitle,
+            targetTime,
+            characterId: currentCharacterId
+        };
+
+        setStats(prev => ({
+            ...prev,
+            reminders: [...(prev.reminders || []), newReminder]
+        }));
+        
+        setError(`リマインダーを${minutes}分後に設定したぜ。`);
+        setTimeout(() => setError(null), 3000);
     };
 
     const handleCloseSpecialMission = () => {
@@ -674,6 +742,31 @@ const App: React.FC = () => {
                                                 <span className="text-[10px] font-mono text-slate-400 ml-auto">
                                                     {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                 </span>
+                                                {/* Reminder Button */}
+                                                <div className="relative">
+                                                  <button 
+                                                    onClick={() => setShowReminderPicker(showReminderPicker === msg.id ? null : msg.id)}
+                                                    className="p-1 hover:bg-slate-100 rounded-full transition-colors"
+                                                    title="リマインダーを設定"
+                                                  >
+                                                    <Bell className={`w-3 h-3 ${stats.reminders?.some(r => r.characterId === currentCharacterId) ? 'fill-yellow-400 text-yellow-500' : 'text-slate-400'}`} />
+                                                  </button>
+                                                  
+                                                  {showReminderPicker === msg.id && (
+                                                    <div className="absolute right-0 top-6 z-50 bg-white border-2 border-black shadow-[4px_4px_0_0_#000] p-2 flex flex-col gap-1 w-32 animate-in fade-in zoom-in-95">
+                                                      <p className="text-[10px] font-black border-b border-black mb-1 pb-1">通知設定</p>
+                                                      {[30, 60, 120].map(mins => (
+                                                        <button 
+                                                          key={mins}
+                                                          onClick={() => { handleSetReminder(mins); setShowReminderPicker(null); }}
+                                                          className="text-[10px] font-bold py-1 px-2 hover:bg-yellow-100 text-left transition-colors whitespace-nowrap"
+                                                        >
+                                                          {mins}分後に通知
+                                                        </button>
+                                                      ))}
+                                                    </div>
+                                                  )}
+                                                </div>
                                             </div>
                                         )}
                                         <div className="font-medium text-sm md:text-base">
