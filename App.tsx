@@ -287,7 +287,7 @@ const App: React.FC = () => {
         return false;
     };
 
-    const handleSetReminder = async (minutes: number) => {
+    const handleSetReminder = async (timeValue: number | string) => {
         let permission = notificationPermission;
         if (permission === 'default') {
             const granted = await requestNotificationPermission();
@@ -298,7 +298,26 @@ const App: React.FC = () => {
         }
 
         const missionTitle = findMissionTitle(currentHistory, day);
-        const targetTime = Date.now() + minutes * 60000;
+        let targetTime = 0;
+        let displayLabel = "";
+
+        if (typeof timeValue === 'number') {
+            targetTime = Date.now() + timeValue * 60000;
+            displayLabel = `${timeValue}分後`;
+        } else {
+            // HH:mm format
+            const [hours, minutes] = timeValue.split(':').map(Number);
+            const now = new Date();
+            const targetDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, 0, 0);
+            
+            // If the time has already passed today, set it for tomorrow
+            if (targetDate.getTime() <= now.getTime()) {
+                targetDate.setDate(targetDate.getDate() + 1);
+            }
+            
+            targetTime = targetDate.getTime();
+            displayLabel = `${timeValue}`;
+        }
         
         const newReminder: MissionReminder = {
             id: Date.now().toString(),
@@ -312,7 +331,7 @@ const App: React.FC = () => {
             reminders: [...(prev.reminders || []), newReminder]
         }));
         
-        setError(`リマインダーを${minutes}分後に設定したぜ。`);
+        setError(`リマインダーを${displayLabel}に設定したぜ。`);
         setTimeout(() => setError(null), 3000);
     };
 
@@ -753,17 +772,36 @@ const App: React.FC = () => {
                                                   </button>
                                                   
                                                   {showReminderPicker === msg.id && (
-                                                    <div className="absolute right-0 top-6 z-50 bg-white border-2 border-black shadow-[4px_4px_0_0_#000] p-2 flex flex-col gap-1 w-32 animate-in fade-in zoom-in-95">
+                                                    <div className="absolute right-0 top-6 z-50 bg-white border-2 border-black shadow-[4px_4px_0_0_#000] p-2 flex flex-col gap-1 w-40 animate-in fade-in zoom-in-95">
                                                       <p className="text-[10px] font-black border-b border-black mb-1 pb-1">通知設定</p>
-                                                      {[30, 60, 120].map(mins => (
-                                                        <button 
-                                                          key={mins}
-                                                          onClick={() => { handleSetReminder(mins); setShowReminderPicker(null); }}
-                                                          className="text-[10px] font-bold py-1 px-2 hover:bg-yellow-100 text-left transition-colors whitespace-nowrap"
-                                                        >
-                                                          {mins}分後に通知
-                                                        </button>
-                                                      ))}
+                                                      
+                                                      {/* プリセット項目 */}
+                                                      <div className="grid grid-cols-1 gap-0.5 mb-1">
+                                                        {[30, 60, 120, 240, 480, 1440].map(mins => (
+                                                          <button 
+                                                            key={mins}
+                                                            onClick={() => { handleSetReminder(mins); setShowReminderPicker(null); }}
+                                                            className="text-[10px] font-bold py-1 px-2 hover:bg-yellow-100 text-left transition-colors whitespace-nowrap"
+                                                          >
+                                                            {mins >= 60 ? (mins >= 1440 ? '24時間後' : `${mins / 60}時間後`) : `${mins}分後`}
+                                                          </button>
+                                                        ))}
+                                                      </div>
+
+                                                      {/* 時刻指定 */}
+                                                      <div className="border-t border-black pt-1">
+                                                        <p className="text-[8px] font-bold text-slate-500 mb-1">時刻で指定:</p>
+                                                        <input 
+                                                          type="time" 
+                                                          className="w-full text-[10px] font-bold border border-black p-1 mb-1 focus:bg-yellow-50 outline-none"
+                                                          onChange={(e) => {
+                                                            if (e.target.value) {
+                                                              handleSetReminder(e.target.value);
+                                                              setShowReminderPicker(null);
+                                                            }
+                                                          }}
+                                                        />
+                                                      </div>
                                                     </div>
                                                   )}
                                                 </div>
