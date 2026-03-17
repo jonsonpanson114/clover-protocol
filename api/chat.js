@@ -243,7 +243,7 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'API key not configured' });
     }
 
-    const modelId = "gemini-3.1-flash";
+    const modelId = "gemini-3-flash-preview";
     const genAI = new GoogleGenerativeAI(apiKey);
 
     const model = genAI.getGenerativeModel({
