@@ -220,10 +220,24 @@ const App: React.FC = () => {
             
             activeReminders.forEach(reminder => {
                 if (now >= reminder.targetTime && now < reminder.targetTime + 65000) { // Notify within 1 minute window
-                    new Notification("CLOVER PROTOCOL", {
-                        body: `指令の時間だぜ: ${reminder.missionTitle}`,
-                        icon: '/pwa-192x192.png'
-                    });
+                    if ('serviceWorker' in navigator) {
+                        navigator.serviceWorker.ready.then(registration => {
+                            registration.showNotification("CLOVER PROTOCOL", {
+                                body: `指令の時間だぜ: ${reminder.missionTitle}`,
+                                icon: '/pwa-192x192.png',
+                                vibrate: [200, 100, 200],
+                                badge: '/pwa-192x192.png',
+                                tag: `mission-reminder-${reminder.id}`,
+                                renotify: true
+                            });
+                        });
+                    } else {
+                        // Fallback for browsers that support Notification but not Service Worker
+                        new Notification("CLOVER PROTOCOL", {
+                            body: `指令の時間だぜ: ${reminder.missionTitle}`,
+                            icon: '/pwa-192x192.png'
+                        });
+                    }
                 }
             });
 
