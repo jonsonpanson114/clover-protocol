@@ -220,23 +220,31 @@ const App: React.FC = () => {
             
             activeReminders.forEach(reminder => {
                 if (now >= reminder.targetTime && now < reminder.targetTime + 65000) { // Notify within 1 minute window
-                    if ('serviceWorker' in navigator) {
-                        navigator.serviceWorker.ready.then(registration => {
-                            registration.showNotification("CLOVER PROTOCOL", {
-                                body: `指令の時間だぜ: ${reminder.missionTitle}`,
-                                icon: '/pwa-192x192.png',
-                                vibrate: [200, 100, 200],
-                                badge: '/pwa-192x192.png',
-                                tag: `mission-reminder-${reminder.id}`,
-                                renotify: true
+                    if (Notification.permission === 'granted') {
+                        if ('serviceWorker' in navigator) {
+                            navigator.serviceWorker.ready.then(registration => {
+                                registration.showNotification("CLOVER PROTOCOL", {
+                                    body: `指令の時間だぜ: ${reminder.missionTitle}`,
+                                    icon: '/pwa-192x192.png',
+                                    vibrate: [200, 100, 200],
+                                    badge: '/pwa-192x192.png',
+                                    tag: `mission-reminder-${reminder.id}`,
+                                    renotify: true
+                                }).catch(err => console.warn('[SW Notification Error]:', err));
                             });
-                        });
+                        } else {
+                            // Fallback for browsers that support Notification but not Service Worker
+                            try {
+                                new Notification("CLOVER PROTOCOL", {
+                                    body: `指令の時間だぜ: ${reminder.missionTitle}`,
+                                    icon: '/pwa-192x192.png'
+                                });
+                            } catch (err) {
+                                console.warn('[Notification Error]:', err);
+                            }
+                        }
                     } else {
-                        // Fallback for browsers that support Notification but not Service Worker
-                        new Notification("CLOVER PROTOCOL", {
-                            body: `指令の時間だぜ: ${reminder.missionTitle}`,
-                            icon: '/pwa-192x192.png'
-                        });
+                        console.warn('[Notification Blocked]: Permission is not currently granted. Skipping notification.');
                     }
                 }
             });
