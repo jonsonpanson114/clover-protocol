@@ -1,6 +1,3 @@
-const fs = require('fs').promises;
-const path = require('path');
-
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -17,9 +14,8 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Invalid reminder data' });
     }
 
-    const reminders = await getScheduledReminders();
-    reminders.push({ ...reminder, scheduledAt: Date.now() });
-    await saveScheduledReminders(reminders);
+    // JSONBin.ioに保存
+    await saveToJSONBin(reminder);
 
     console.log('[Push Schedule] Reminder scheduled:', reminder.id, 'for', new Date(reminder.targetTime).toISOString());
 
@@ -30,16 +26,36 @@ export default async function handler(req, res) {
   }
 }
 
-async function getScheduledReminders() {
-  try {
-    const data = await fs.readFile(path.join(process.cwd(), 'data', 'scheduled-reminders.json'), 'utf8');
-    return JSON.parse(data);
-  } catch { return []; }
-}
+async function saveToJSONBin(reminder) {
+  const JSONBIN_URL = process.env.JSONBIN_URL;
+  const JSONBIN_API_KEY = process.env.JSONBIN_API_KEY;
 
-async function saveScheduledReminders(reminders) {
-  const dir = path.join(process.cwd(), 'data');
-  await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(path.join(dir, 'scheduled-reminders.json'), JSON.stringify(reminders, null, 2));
-  console.log('[Push Schedule] Total reminders saved:', reminders.length);
+  if (!JSONBIN_URL || !JSONBIN_API_KEY) {
+    throw new Error('JSONBin configuration missing');
+  }
+
+  // 現在のデータを取得
+  const currentResponse = await fetch(JSONBIN_URL, {
+    headers: {
+      'X-Master-Key': JSONBIN_API_KEY
+    }
+  });
+
+  const currentData = await currentResponse.json();
+  const reminders = currentData.record?.reminders || [];
+
+  // 追加
+  reminders.push({ ...reminder, scheduledAt: Date.now() });
+
+  // 更新
+  await fetch(JSONBIN_URL, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Master-Key': JSONBIN_API_KEY
+    },
+    body: JSON.stringify({ reminders })
+  });
+
+  console.log('[Push Schedule] Saved to JSONBin:', reminders.length);
 }

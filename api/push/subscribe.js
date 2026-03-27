@@ -14,16 +14,10 @@ export default async function handler(req, res) {
     const { subscription } = req.body;
     if (!subscription?.endpoint) return res.status(400).json({ error: 'Invalid subscription' });
 
-    const subscriptions = await getSubscriptions();
-    const existingIndex = subscriptions.findIndex(sub => sub.endpoint === subscription.endpoint);
+    // JSONBin.ioに保存
+    await saveToJSONBin(subscription);
 
-    if (existingIndex === -1) {
-      subscriptions.push({ ...subscription, createdAt: Date.now() });
-      await saveSubscriptions(subscriptions);
-      console.log('[Push Subscribe] New subscription added:', subscription.endpoint);
-    } else {
-      console.log('[Push Subscribe] Subscription already exists:', subscription.endpoint);
-    }
+    console.log('[Push Subscribe] New subscription added:', subscription.endpoint);
 
     return res.status(200).json({ success: true });
   } catch (error) {
@@ -32,16 +26,40 @@ export default async function handler(req, res) {
   }
 }
 
-async function getSubscriptions() {
-  try {
-    const data = await fs.readFile(path.join(process.cwd(), 'data', 'subscriptions.json'), 'utf8');
-    return JSON.parse(data);
-  } catch { return []; }
-}
+async function saveToJSONBin(subscription) {
+  const JSONBIN_URL = process.env.JSONBIN_URL;
+  const JSONBIN_API_KEY = process.env.JSONBIN_API_KEY;
 
-async function saveSubscriptions(subscriptions) {
-  const dir = path.join(process.cwd(), 'data');
-  await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(path.join(dir, 'subscriptions.json'), JSON.stringify(subscriptions, null, 2));
-  console.log('[Push Subscribe] Subscriptions saved:', subscriptions.length);
+  if (!JSONBIN_URL || !JSONBIN_API_KEY) {
+    throw new Error('JSONBin configuration missing');
+  }
+
+  // 現在のデータを取得
+  const currentResponse = await fetch(JSONBIN_URL, {
+    headers: {
+      'X-Master-Key': JSONBIN_API_KEY
+    }
+  });
+
+  const currentData = await currentResponse.json();
+  const subscriptions = currentData.record?.subscriptions || [];
+
+  // 重複チェック
+  const existingIndex = subscriptions.findIndex(sub => sub.endpoint === subscription.endpoint);
+
+  if (existingIndex === -1) {
+    subscriptions.push({ ...subscription, createdAt: Date.now() });
+  }
+
+  // 更新
+  await fetch(JSONBIN_URL, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Master-Key': JSONBIN_API_KEY
+    },
+    body: JSON.stringify({ subscriptions })
+  });
+
+  console.log('[Push Subscribe] Saved to JSONBin:', subscriptions.length);
 }

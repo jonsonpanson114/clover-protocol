@@ -1,6 +1,4 @@
 const webpush = require('web-push');
-const fs = require('fs').promises;
-const path = require('path');
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Credentials', true);
@@ -24,7 +22,8 @@ export default async function handler(req, res) {
       process.env.VAPID_PRIVATE_KEY
     );
 
-    const subscriptions = await getSubscriptions();
+    // JSONBin.ioから購読情報を取得
+    const subscriptions = await getSubscriptionsFromJSONBin();
 
     if (subscriptions.length === 0) {
       console.log('[Push Send] No subscriptions to send to');
@@ -40,10 +39,6 @@ export default async function handler(req, res) {
           return { success: true, endpoint: subscription.endpoint };
         } catch (error) {
           console.error('[Push Send] Failed to send to', subscription.endpoint, ':', error.message);
-          if (error.statusCode === 404 || error.statusCode === 410) {
-            await removeSubscription(subscription.endpoint);
-            console.log('[Push Send] Removed invalid subscription:', subscription.endpoint);
-          }
           return { success: false, error: error.message, endpoint: subscription.endpoint };
         }
       })
@@ -59,17 +54,26 @@ export default async function handler(req, res) {
   }
 }
 
-async function getSubscriptions() {
-  try {
-    const data = await fs.readFile(path.join(process.cwd(), 'data', 'subscriptions.json'), 'utf8');
-    return JSON.parse(data);
-  } catch { return []; }
-}
+async function getSubscriptionsFromJSONBin() {
+  const JSONBIN_URL = process.env.JSONBIN_URL;
+  const JSONBIN_API_KEY = process.env.JSONBIN_API_KEY;
 
-async function removeSubscription(endpoint) {
-  const subscriptions = await getSubscriptions();
-  const filtered = subscriptions.filter(sub => sub.endpoint !== endpoint);
-  const dir = path.join(process.cwd(), 'data');
-  await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(path.join(dir, 'subscriptions.json'), JSON.stringify(filtered, null, 2));
+  if (!JSONBIN_URL || !JSONBIN_API_KEY) {
+    console.error('[Push Send] JSONBin configuration missing');
+    return [];
+  }
+
+  try {
+    const response = await fetch(JSONBIN_URL, {
+      headers: {
+        'X-Master-Key': JSONBIN_API_KEY
+      }
+    });
+
+    const data = await response.json();
+    return data.record?.subscriptions || [];
+  } catch (error) {
+    console.error('[Push Send] Failed to fetch from JSONBin:', error);
+    return [];
+  }
 }
