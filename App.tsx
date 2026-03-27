@@ -16,6 +16,7 @@ import SeasonalBanner from './components/SeasonalBanner';
 import TypewriterText from './components/TypewriterText';
 import { generateResponse } from './services/geminiService';
 import { saveContent } from './services/driveLogger';
+import { scheduleMissionReminder, triggerReminderCheck } from './services/reminderService';
 import { Send, Zap, Loader2, AlertTriangle, Trash2, Trophy, Archive, X, Menu, Calendar, Book, Sparkles, Bell } from 'lucide-react';
 
 // Updated storage key for V2 data structure
@@ -331,16 +332,16 @@ const App: React.FC = () => {
             const [hours, minutes] = timeValue.split(':').map(Number);
             const now = new Date();
             const targetDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, 0, 0);
-            
+
             // If the time has already passed today, set it for tomorrow
             if (targetDate.getTime() <= now.getTime()) {
                 targetDate.setDate(targetDate.getDate() + 1);
             }
-            
+
             targetTime = targetDate.getTime();
             displayLabel = `${timeValue}`;
         }
-        
+
         const newReminder: MissionReminder = {
             id: Date.now().toString(),
             missionTitle,
@@ -352,7 +353,16 @@ const App: React.FC = () => {
             ...prev,
             reminders: [...(prev.reminders || []), newReminder]
         }));
-        
+
+        // IndexedDBに保存（Service Workerがバックグラウンドでチェック）
+        try {
+            await scheduleMissionReminder(newReminder.id, missionTitle, targetTime);
+            // Service Workerに即時チェックを指示
+            triggerReminderCheck();
+        } catch (error) {
+            console.error('Failed to save reminder to IndexedDB:', error);
+        }
+
         setError(`リマインダーを${displayLabel}に設定したぜ。`);
         setTimeout(() => setError(null), 3000);
     };
