@@ -171,15 +171,23 @@ self.addEventListener('push', (event) => {
     body: data.body || 'ミッションが利用可能です',
     icon: '/pwa-192x192.png',
     badge: '/pwa-192x192.png',
-    tag: data.tag || 'clover-notification',
-    requireInteraction: false,
+    tag: data.tag || data.data?.reminderId || 'clover-notification',
+    requireInteraction: true,
+    vibrate: [200, 100, 200],
     actions: [
       {
         action: 'open',
         title: 'アプリを開く',
+        icon: '/pwa-192x192.png'
       },
     ],
+    data: {
+      ...data.data,
+      timestamp: Date.now()
+    }
   };
+
+  console.log('[SW] Push notification received:', data);
 
   event.waitUntil(
     self.registration.showNotification(data.title || 'CLOVER PROTOCOL', options)
@@ -190,18 +198,26 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
-  event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      for (const client of clientList) {
-        if (client.url.includes(self.location.origin) && 'focus' in client) {
-          return client.focus();
+  console.log('[SW] Notification clicked:', event.action);
+
+  if (event.action === 'open' || !event.action) {
+    event.waitUntil(
+      self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+        // Focus existing window if available
+        for (const client of clientList) {
+          if (client.url.includes(self.location.origin) && 'focus' in client) {
+            console.log('[SW] Focusing existing window');
+            return client.focus();
+          }
         }
-      }
-      if (clients.openWindow) {
-        return clients.openWindow('/');
-      }
-    })
-  );
+        // Open new window if no existing window
+        if (clients.openWindow) {
+          console.log('[SW] Opening new window');
+          return clients.openWindow('/');
+        }
+      })
+    );
+  }
 });
 
 // Sync event

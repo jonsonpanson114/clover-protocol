@@ -17,6 +17,7 @@ import TypewriterText from './components/TypewriterText';
 import { generateResponse } from './services/geminiService';
 import { saveContent } from './services/driveLogger';
 import { scheduleMissionReminder, triggerReminderCheck } from './services/reminderService';
+import { initializePushNotifications, schedulePushReminder } from './services/notificationService';
 import { Send, Zap, Loader2, AlertTriangle, Trash2, Trophy, Archive, X, Menu, Calendar, Book, Sparkles, Bell } from 'lucide-react';
 
 // Updated storage key for V2 data structure
@@ -211,6 +212,13 @@ const App: React.FC = () => {
         }
     }, [day]);
 
+    // Push Notification Initialization
+    useEffect(() => {
+        if (notificationPermission === 'granted') {
+            initializePushNotifications().catch(console.error);
+        }
+    }, [notificationPermission]);
+
     // Reminder Check Effect
     useEffect(() => {
         if (notificationPermission !== 'granted') return;
@@ -361,6 +369,13 @@ const App: React.FC = () => {
             triggerReminderCheck();
         } catch (error) {
             console.error('Failed to save reminder to IndexedDB:', error);
+        }
+
+        // Push通知もスケジュール（アプリを完全に終了しても通知が届く）
+        try {
+            await schedulePushReminder(newReminder);
+        } catch (error) {
+            console.error('Failed to schedule push reminder:', error);
         }
 
         setError(`リマインダーを${displayLabel}に設定したぜ。`);

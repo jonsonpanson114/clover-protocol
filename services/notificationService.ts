@@ -1,4 +1,5 @@
-import { CharacterId } from '../types';
+import { CharacterId, MissionReminder } from '../types';
+import { subscribeToPush, getPushSubscription } from './pushSubscriptionService';
 
 const STORAGE_KEY_REMINDER = 'CLOVER_REMINDER_';
 const STORAGE_KEY_PERMISSION = 'CLOVER_NOTIFICATION_PERMISSION';
@@ -207,4 +208,69 @@ export const triggerReminderNow = (characterId: CharacterId): void => {
     '/pwa-192x192.png',
     `test-${characterId}`
   );
+};
+
+// ==================== Push Notification Functions ====================
+
+/**
+ * Initialize push notifications
+ */
+export const initializePushNotifications = async (): Promise<boolean> => {
+  if (!('Notification' in window)) {
+    console.log('[Push] Notification API not supported');
+    return false;
+  }
+
+  // Request notification permission first
+  const permission = await requestNotificationPermission();
+  if (permission !== 'granted') {
+    console.log('[Push] Notification permission not granted');
+    return false;
+  }
+
+  // Check if already subscribed
+  const existingSubscription = await getPushSubscription();
+  if (existingSubscription) {
+    console.log('[Push] Already subscribed to push notifications');
+    return true;
+  }
+
+  // Subscribe to push notifications
+  const subscription = await subscribeToPush();
+  if (subscription) {
+    console.log('[Push] Successfully subscribed');
+    return true;
+  }
+
+  console.log('[Push] Failed to subscribe');
+  return false;
+};
+
+/**
+ * Schedule push notification for reminder
+ */
+export const schedulePushReminder = async (reminder: MissionReminder): Promise<void> => {
+  try {
+    const response = await fetch('/api/push/schedule-reminder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        reminder: {
+          id: reminder.id,
+          missionTitle: reminder.missionTitle,
+          targetTime: reminder.targetTime,
+          characterId: reminder.characterId
+        }
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Server returned ${response.status}`);
+    }
+
+    console.log('[Push] Reminder scheduled:', reminder.id);
+  } catch (error) {
+    console.error('[Push] Failed to schedule push reminder:', error);
+    throw error;
+  }
 };
