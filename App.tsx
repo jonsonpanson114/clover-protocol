@@ -227,45 +227,14 @@ const App: React.FC = () => {
             const now = Date.now();
             const activeReminders = stats.reminders || [];
             
-            activeReminders.forEach(reminder => {
-                if (now >= reminder.targetTime && now < reminder.targetTime + 65000) { // Notify within 1 minute window
-                    if (Notification.permission === 'granted') {
-                        if ('serviceWorker' in navigator) {
-                            navigator.serviceWorker.ready.then(registration => {
-                                registration.showNotification("CLOVER PROTOCOL", {
-                                    body: `指令の時間だぜ: ${reminder.missionTitle}`,
-                                    icon: '/pwa-192x192.png',
-                                    vibrate: [200, 100, 200],
-                                    badge: '/pwa-192x192.png',
-                                    tag: `mission-reminder-${reminder.id}`,
-                                    renotify: true
-                                }).catch(err => console.warn('[SW Notification Error]:', err));
-                            });
-                        } else {
-                            // Fallback for browsers that support Notification but not Service Worker
-                            try {
-                                new Notification("CLOVER PROTOCOL", {
-                                    body: `指令の時間だぜ: ${reminder.missionTitle}`,
-                                    icon: '/pwa-192x192.png'
-                                });
-                            } catch (err) {
-                                console.warn('[Notification Error]:', err);
-                            }
-                        }
-                    } else {
-                        console.warn('[Notification Blocked]: Permission is not currently granted. Skipping notification.');
-                    }
-                }
-            });
-
-            // 過去のリマインダーを除去
+            // UIのステータスから過去のリマインダーを除去
             if (activeReminders.some(r => now > r.targetTime + 60000)) {
                 setStats(prev => ({
                     ...prev,
                     reminders: (prev.reminders || []).filter(r => now <= r.targetTime + 60000)
                 }));
             }
-        }, 30000); // 30秒ごとにチェック
+        }, 15000); // 15秒ごとにUI用のクリーンアップのみ実行
 
         return () => clearInterval(interval);
     }, [stats.reminders, notificationPermission]);

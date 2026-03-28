@@ -4,16 +4,16 @@ import App from './App';
 import './index.css';
 
 // Service Worker Registration for PWA Notifications
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker
-      .register('/sw.js')
-      .then((registration) => {
-        console.log('[SW] Service Worker registered:', registration);
-      })
-      .catch((error) => {
-        console.error('[SW] Service Worker registration failed:', error);
-      });
+import { registerSW } from 'virtual:pwa-register';
+
+if (import.meta.env.PROD) {
+  registerSW({
+    onNeedRefresh() {
+      console.log('[PWA] New content available, please refresh.');
+    },
+    onOfflineReady() {
+      console.log('[PWA] App ready to work offline.');
+    },
   });
 }
 

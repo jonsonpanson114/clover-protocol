@@ -1,10 +1,4 @@
-const fs = require('fs').promises;
-const path = require('path');
-
-// Node.jsでfetchを使うためのpolyfill
-if (!global.fetch) {
-  global.fetch = require('node-fetch');
-}
+import fetch from 'node-fetch';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Credentials', true);
@@ -47,7 +41,8 @@ async function saveToJSONBin(subscription) {
   });
 
   const currentData = await currentResponse.json();
-  const subscriptions = currentData.record?.subscriptions || [];
+  const record = currentData.record || { reminders: [], subscriptions: [] };
+  const subscriptions = record.subscriptions || [];
 
   // 重複チェック
   const existingIndex = subscriptions.findIndex(sub => sub.endpoint === subscription.endpoint);
@@ -56,14 +51,14 @@ async function saveToJSONBin(subscription) {
     subscriptions.push({ ...subscription, createdAt: Date.now() });
   }
 
-  // 更新
+  // 更新 (既存のリマインダーも保持する)
   await fetch(JSONBIN_URL, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
       'X-Master-Key': JSONBIN_API_KEY
     },
-    body: JSON.stringify({ subscriptions })
+    body: JSON.stringify({ ...record, subscriptions })
   });
 
   console.log('[Push Subscribe] Saved to JSONBin:', subscriptions.length);

@@ -1,9 +1,5 @@
-const webpush = require('web-push');
-
-// Node.jsでfetchを使うためのpolyfill
-if (!global.fetch) {
-  global.fetch = require('node-fetch');
-}
+import webpush from 'web-push';
+import fetch from 'node-fetch';
 
 export default async function handler(req, res) {
   // セキュリティチェック
@@ -34,7 +30,7 @@ export default async function handler(req, res) {
       process.env.VAPID_PRIVATE_KEY
     );
 
-    // 送信する必要のあるリマインダーを抽出（1時間以内）
+    // 送信する必要のあるリマインドを抽出（1時間以内且つ過去のもの）
     const remindersToSend = reminders.filter(r =>
       r.targetTime <= now && r.targetTime > now - 3600000
     );
@@ -66,12 +62,12 @@ export default async function handler(req, res) {
       console.log('[Cron] Sent reminder:', reminder.id);
     }
 
-    // 送信済みリマインダーを削除
+    // 全てのリマインダーから送信済みのものを除外
     const remainingReminders = reminders.filter(r =>
       !remindersToSend.some(sent => sent.id === r.id)
     );
 
-    // JSONBin.ioを更新
+    // JSONBin.ioを更新 (全データを保持)
     await saveToJSONBin({ reminders: remainingReminders, subscriptions });
 
     console.log('[Cron] Completed. Sent:', sentCount, 'Remaining:', remainingReminders.length);

@@ -1,7 +1,4 @@
-// Node.jsでfetchを使うためのpolyfill
-if (!global.fetch) {
-  global.fetch = require('node-fetch');
-}
+import fetch from 'node-fetch';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Credentials', true);
@@ -47,19 +44,25 @@ async function saveToJSONBin(reminder) {
   });
 
   const currentData = await currentResponse.json();
-  const reminders = currentData.record?.reminders || [];
+  const record = currentData.record || { reminders: [], subscriptions: [] };
+  const reminders = record.reminders || [];
 
-  // 追加
-  reminders.push({ ...reminder, scheduledAt: Date.now() });
+  // 追加 (重複を防ぐために既存のIDがあれば置換、なければ追加)
+  const existingIndex = reminders.findIndex(r => r.id === reminder.id);
+  if (existingIndex !== -1) {
+    reminders[existingIndex] = { ...reminder, updatedAt: Date.now() };
+  } else {
+    reminders.push({ ...reminder, scheduledAt: Date.now() });
+  }
 
-  // 更新
+  // 更新 (既存の購読情報も保持する)
   await fetch(JSONBIN_URL, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
       'X-Master-Key': JSONBIN_API_KEY
     },
-    body: JSON.stringify({ reminders })
+    body: JSON.stringify({ ...record, reminders })
   });
 
   console.log('[Push Schedule] Saved to JSONBin:', reminders.length);

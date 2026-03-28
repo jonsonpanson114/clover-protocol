@@ -1,5 +1,11 @@
 // Service Worker for CLOVER PROTOCOL PWA
 // Handles push notifications and caching
+importScripts('https://storage.googleapis.com/workbox-cdn/releases/6.4.1/workbox-sw.js');
+
+if (workbox) {
+  // Inject manifest for precaching
+  workbox.precaching.precacheAndRoute(self.__WB_MANIFEST || []);
+}
 
 const STATIC_CACHE = 'static-v1';
 const DB_NAME = 'CloverReminderDB';

@@ -223,7 +223,7 @@ export const initializePushNotifications = async (): Promise<boolean> => {
 
   // Request notification permission first
   const permission = await requestNotificationPermission();
-  if (permission !== 'granted') {
+  if (!permission) {
     console.log('[Push] Notification permission not granted');
     return false;
   }
