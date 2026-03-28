@@ -291,7 +291,12 @@ const App: React.FC = () => {
         let permission = notificationPermission;
         if (permission === 'default') {
             const granted = await requestNotificationPermission();
-            if (!granted) return;
+            if (granted) {
+                // 許可された直後にプッシュ購読を試みる
+                await initializePushNotifications();
+            } else {
+                return;
+            }
         } else if (permission === 'denied') {
             setError("通知がブロックされています。ブラウザの設定から許可してください。");
             return;

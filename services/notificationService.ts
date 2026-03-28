@@ -9,7 +9,7 @@ const STORAGE_KEY_PERMISSION = 'CLOVER_NOTIFICATION_PERMISSION';
  */
 export const requestNotificationPermission = async (): Promise<boolean> => {
   if (!('Notification' in window)) {
-    console.log('Notification API is not supported');
+    console.log('[Notification] API not supported');
     return false;
   }
 
@@ -17,13 +17,15 @@ export const requestNotificationPermission = async (): Promise<boolean> => {
     return true;
   }
 
-  if (Notification.permission !== 'denied') {
+  try {
     const permission = await Notification.requestPermission();
     localStorage.setItem(STORAGE_KEY_PERMISSION, permission);
+    console.log('[Notification] Permission requested:', permission);
     return permission === 'granted';
+  } catch (error) {
+    console.error('[Notification] Error requesting permission:', error);
+    return false;
   }
-
-  return false;
 };
 
 /**
@@ -222,9 +224,20 @@ export const initializePushNotifications = async (): Promise<boolean> => {
   }
 
   // Request notification permission first
-  const permission = await requestNotificationPermission();
-  if (!permission) {
-    console.log('[Push] Notification permission not granted');
+  try {
+    const permission = Notification.permission;
+    if (permission === 'default') {
+      const granted = await requestNotificationPermission();
+      if (!granted) {
+        console.log('[Push] Notification permission not granted');
+        return false;
+      }
+    } else if (permission === 'denied') {
+      console.log('[Push] Notification permission denied');
+      return false;
+    }
+  } catch (error) {
+    console.error('[Push] Permission request error:', error);
     return false;
   }
 
