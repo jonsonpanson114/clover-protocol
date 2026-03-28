@@ -1,5 +1,10 @@
 const webpush = require('web-push');
 
+// Node.jsでfetchを使うためのpolyfill
+if (!global.fetch) {
+  global.fetch = require('node-fetch');
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');

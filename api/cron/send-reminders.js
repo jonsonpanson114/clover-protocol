@@ -1,5 +1,10 @@
 const webpush = require('web-push');
 
+// Node.jsでfetchを使うためのpolyfill
+if (!global.fetch) {
+  global.fetch = require('node-fetch');
+}
+
 export default async function handler(req, res) {
   // セキュリティチェック
   if (req.headers['x-cron-secret'] !== process.env.CRON_SECRET) {
