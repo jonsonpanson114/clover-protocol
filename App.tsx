@@ -98,6 +98,25 @@ const App: React.FC = () => {
 
     const [showSpecialMission, setShowSpecialMission] = useState(false);
     const [showReminderPicker, setShowReminderPicker] = useState<string | null>(null); // Message ID for which picker is shown
+
+    // --- Helpers (Hoisted or moved up) ---
+    function findMissionTitle(history: Message[], currentDay: number): string {
+        const regex = new RegExp(`\\*\\*【Day ${currentDay}: (.+?)】\\*\\*`);
+        for (let i = history.length - 1; i >= 0; i--) {
+            const match = history[i].text.match(regex);
+            if (match && match[1]) return match[1];
+        }
+        return "Secret Mission";
+    }
+
+    function findMissionTrivia(history: Message[]): string {
+        const regex = /\*\*\[ストーリーパート\]\*\*\n?([\s\S]+?)(?=\n?\*\*\[今日の指令\]\*\*|$)/;
+        for (let i = history.length - 1; i >= 0; i--) {
+            const match = history[i].text.match(regex);
+            if (match && match[1]) return match[1].trim();
+        }
+        return "";
+    }
     const [userProgress, setUserProgress] = useState<UserProgress>(() => loadState('userProgress', {
         unlockedSpecialMissions: [],
         completedSpecialMissions: [],
@@ -302,6 +321,7 @@ const App: React.FC = () => {
             return;
         }
 
+        const currentHistory = histories[currentCharacterId] || [];
         const missionTitle = findMissionTitle(currentHistory, day);
         let targetTime = 0;
         let displayLabel = "";
@@ -406,24 +426,9 @@ const App: React.FC = () => {
         setSeasonalEvent(null);
     };
 
-    const findMissionTitle = (history: Message[], currentDay: number): string => {
-        const regex = new RegExp(`\\*\\*【Day ${currentDay}: (.+?)】\\*\\*`);
-        for (let i = history.length - 1; i >= 0; i--) {
-            const match = history[i].text.match(regex);
-            if (match && match[1]) return match[1];
-        }
-        return "Secret Mission";
-    };
 
-    const findMissionTrivia = (history: Message[]): string => {
-        // ストーリーパートを抽出する正規表現
-        const regex = /\*\*\[ストーリーパート\]\*\*\n?([\s\S]+?)(?=\n?\*\*\[今日の指令\]\*\*|$)/;
-        for (let i = history.length - 1; i >= 0; i--) {
-            const match = history[i].text.match(regex);
-            if (match && match[1]) return match[1].trim();
-        }
-        return "";
-    };
+
+
 
     const handleSendMessage = async (text: string = inputText) => {
         if (!text.trim() || isLoading || isSendingRef.current) return;
