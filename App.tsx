@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { UserStats, Message, CharacterId, MissionLogEntry, RandomEvent, UserEvents, SpecialMission, UserProgress, StoryBranch, WeekEndChoice, SideMission, SeasonalEvent, MissionReminder } from './types';
 import { CHARACTERS } from './constants';
 import { getRandomEvent } from './randomEvents';
@@ -23,6 +23,12 @@ import { Send, Zap, Loader2, AlertTriangle, Trash2, Trophy, Archive, X, Menu, Ca
 // Updated storage key for V2 data structure
 const STORAGE_KEY = 'CLOVER_PROTOCOL_STATE_V2';
 const REMINDER_STORAGE_KEY = 'CLOVER_LAST_REMINDED_DATE';
+
+// Constants
+const ERROR_DISPLAY_DURATION = 3000; // 3 seconds
+const REMINDER_CLEANUP_WINDOW = 60000; // 1 minute
+const UI_CLEANUP_INTERVAL = 15000; // 15 seconds
+const REMINDER_CHECK_INTERVAL = 30000; // 30 seconds
 
 type Histories = Record<CharacterId, Message[]>;
 
@@ -247,13 +253,13 @@ const App: React.FC = () => {
             const activeReminders = stats.reminders || [];
             
             // UIのステータスから過去のリマインダーを除去
-            if (activeReminders.some(r => now > r.targetTime + 60000)) {
+            if (activeReminders.some(r => now > r.targetTime + REMINDER_CLEANUP_WINDOW)) {
                 setStats(prev => ({
                     ...prev,
-                    reminders: (prev.reminders || []).filter(r => now <= r.targetTime + 60000)
+                    reminders: (prev.reminders || []).filter(r => now <= r.targetTime + REMINDER_CLEANUP_WINDOW)
                 }));
             }
-        }, 15000); // 15秒ごとにUI用のクリーンアップのみ実行
+        }, UI_CLEANUP_INTERVAL); // 15秒ごとにUI用のクリーンアップのみ実行
 
         return () => clearInterval(interval);
     }, [stats.reminders, notificationPermission]);
@@ -373,7 +379,7 @@ const App: React.FC = () => {
         }
 
         setError(`リマインダーを${displayLabel}に設定したぜ。`);
-        setTimeout(() => setError(null), 3000);
+        setTimeout(() => setError(null), ERROR_DISPLAY_DURATION);
     };
 
     const handleCloseSpecialMission = () => {

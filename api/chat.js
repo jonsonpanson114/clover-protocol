@@ -220,9 +220,16 @@ const getCharacterInstruction = (charId, day, stats) => {
 const sendLog = () => {};
 
 export default async function handler(req, res) {
-  // CORS headers
-  res.setHeader('Access-Control-Allow-Credentials', true);
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  // CORS headers - Restrict to specific origins in production
+  const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',')
+    : ['http://localhost:3000', 'http://localhost:5173', 'https://clover-protocols-isaka.vercel.app'];
+
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
 
@@ -289,13 +296,11 @@ export default async function handler(req, res) {
 
     if (errorMessage.includes("429") || errorMessage.includes("Quota exceeded")) {
       userMessage = `……通信が制限されている。どうやらこちらの「出力」が限界を超えたらしいな。
-[DEBUG] Quota Exceeded (429).
 時間を置くか、別のポート（APIキー）を試すしかなさそうだ。陣内なら「今日はもう閉店だ」って言うところだろうよ。`;
     }
 
     if (errorMessage.includes("404") || errorMessage.includes("not found")) {
       userMessage = `……通信が途絶えた。
-[DEBUG] Model Selection Failure (gemini-2.5-flash).
 どうやら「今の型」が古いか、存在しないらしい。
 システムエラー詳細: ${errorMessage}`;
     }

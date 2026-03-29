@@ -11,6 +11,7 @@ const STATIC_CACHE = 'static-v1';
 const DB_NAME = 'CloverReminderDB';
 const DB_VERSION = 1;
 const STORE_NAME = 'reminders';
+const REMINDER_CHECK_INTERVAL = 30000; // 30 seconds
 
 let checkInterval = null;
 
@@ -142,7 +143,7 @@ self.addEventListener('activate', (event) => {
       await checkReminders();
       // Check every 30 seconds
       if (!checkInterval) {
-        checkInterval = setInterval(checkReminders, 30000);
+        checkInterval = setInterval(checkReminders, REMINDER_CHECK_INTERVAL);
         console.log('[SW] Started reminder checker (30s interval)');
       }
     })()

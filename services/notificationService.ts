@@ -215,7 +215,7 @@ export const triggerReminderNow = (characterId: CharacterId): void => {
 // ==================== Push Notification Functions ====================
 
 /**
- * Initialize push notifications
+ * Initialize push notifications with improved error handling
  */
 export const initializePushNotifications = async (): Promise<boolean> => {
   if (!('Notification' in window)) {
@@ -223,67 +223,92 @@ export const initializePushNotifications = async (): Promise<boolean> => {
     return false;
   }
 
-  // Request notification permission first
-  try {
-    const permission = Notification.permission;
-    if (permission === 'default') {
-      const granted = await requestNotificationPermission();
-      if (!granted) {
-        console.log('[Push] Notification permission not granted');
-        return false;
-      }
-    } else if (permission === 'denied') {
-      console.log('[Push] Notification permission denied');
-      return false;
-    }
-  } catch (error) {
-    console.error('[Push] Permission request error:', error);
+  // Check service worker support
+  if (!('serviceWorker' in navigator)) {
+    console.error('[Push] Service Worker not supported');
     return false;
   }
 
-  // Check if already subscribed
-  const existingSubscription = await getPushSubscription();
-  if (existingSubscription) {
-    console.log('[Push] Already subscribed to push notifications');
-    return true;
-  }
+  // Request notification permission first
+  try {
+    const permission = Notification.permission;
 
-  // Subscribe to push notifications
-  const subscription = await subscribeToPush();
-  if (subscription) {
-    console.log('[Push] Successfully subscribed');
-    return true;
-  }
+    if (permission === 'denied') {
+      console.warn('[Push] Notification permission denied - user must enable in browser settings');
+      return false;
+    }
 
-  console.log('[Push] Failed to subscribe');
-  return false;
+    if (permission === 'default') {
+      const granted = await requestNotificationPermission();
+      if (!granted) {
+        console.warn('[Push] Notification permission not granted');
+        return false;
+      }
+    }
+
+    // Wait for service worker to be ready
+    const registration = await navigator.serviceWorker.ready;
+
+    // Check if already subscribed
+    const existingSubscription = await registration.pushManager.getSubscription();
+    if (existingSubscription) {
+      console.log('[Push] Already subscribed to push notifications');
+      return true;
+    }
+
+    // Subscribe to push notifications
+    const subscription = await subscribeToPush();
+    if (subscription) {
+      console.log('[Push] Successfully subscribed');
+      return true;
+    }
+
+    console.warn('[Push] Failed to subscribe');
+    return false;
+  } catch (error) {
+    console.error('[Push] Initialization error:', error);
+    return false;
+  }
 };
 
 /**
- * Schedule push notification for reminder
+ * Schedule push notification for reminder with retry logic
  */
 export const schedulePushReminder = async (reminder: MissionReminder): Promise<void> => {
-  try {
-    const response = await fetch('/api/push/schedule-reminder', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        reminder: {
-          id: reminder.id,
-          missionTitle: reminder.missionTitle,
-          targetTime: reminder.targetTime,
-          characterId: reminder.characterId
-        }
-      })
-    });
+  const maxRetries = 2;
+  let retryCount = 0;
 
-    if (!response.ok) {
-      throw new Error(`Server returned ${response.status}`);
+  while (retryCount <= maxRetries) {
+    try {
+      const response = await fetch('/api/push/schedule-reminder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reminder: {
+            id: reminder.id,
+            missionTitle: reminder.missionTitle,
+            targetTime: reminder.targetTime,
+            characterId: reminder.characterId
+          }
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server returned ${response.status}`);
+      }
+
+      console.log('[Push] Reminder scheduled:', reminder.id);
+      return;
+    } catch (error) {
+      retryCount++;
+
+      if (retryCount > maxRetries) {
+        console.error('[Push] Failed to schedule push reminder after retries:', error);
+        throw error;
+      }
+
+      // Wait before retry (exponential backoff)
+      await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
     }
-
-    console.log('[Push] Reminder scheduled:', reminder.id);
-  } catch (error) {
-    console.error('[Push] Failed to schedule push reminder:', error);
-    throw error;
   }
 };
