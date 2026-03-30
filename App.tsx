@@ -863,6 +863,24 @@ const App: React.FC = () => {
                             {error}
                         </div>
                     )}
+
+                    {notificationPermission === 'denied' && (
+                        <div className="bg-amber-100 border-2 border-amber-500 text-amber-900 p-3 mb-2 rounded-lg font-bold text-xs flex items-center justify-between shadow-[4px_4px_0_0_#f59e0b]">
+                            <div className="flex items-center gap-2">
+                                <AlertTriangle className="w-5 h-5 text-amber-600" />
+                                <span>ブラウザの設定で通知がブロックされています。リマインダーを機能させるには許可が必要です。</span>
+                            </div>
+                            <button 
+                                onClick={() => {
+                                    setError("ブラウザのアドレスバーにある鍵アイコンをクリックして、通知を『許可』に設定してください。");
+                                    setTimeout(() => setError(null), 5000);
+                                }}
+                                className="bg-amber-500 text-white px-2 py-1 border-2 border-black neo-btn text-[10px]"
+                            >
+                                方法を見る
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 {/* Input Area */}
