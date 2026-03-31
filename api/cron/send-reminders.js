@@ -2,21 +2,35 @@ import webpush from 'web-push';
 import fetch from 'node-fetch';
 
 export default async function handler(req, res) {
-  // セキュリティチェック
-  // Vercel Cron は Authorization: Bearer <CRON_SECRET> を使うため、
-  // 既存実装との互換で x-cron-secret も許可する。
+  // Security:
+  // - Vercel Cron: Authorization: Bearer <CRON_SECRET>
+  // - Legacy: x-cron-secret
+  // - GAS trigger: x-gas-cron-token / body.auth_token / query secret
+  const cronSecret = process.env.CRON_SECRET;
+  const gasCronToken = process.env.GAS_CRON_TOKEN || cronSecret;
+
+  if (!cronSecret) {
+    console.log('[Cron] CRON_SECRET is not configured');
+    return res.status(500).json({ error: 'CRON_SECRET is not configured' });
+  }
+
   const rawAuthHeader = req.headers.authorization || '';
   const bearerToken = rawAuthHeader.startsWith('Bearer ')
     ? rawAuthHeader.slice('Bearer '.length).trim()
     : '';
   const legacyHeaderSecret = req.headers['x-cron-secret'];
+  const gasHeaderToken = req.headers['x-gas-cron-token'];
+  const querySecret = req.query?.secret;
+  const bodyToken = req.body?.auth_token;
 
-  if (!process.env.CRON_SECRET) {
-    console.log('[Cron] CRON_SECRET is not configured');
-    return res.status(500).json({ error: 'CRON_SECRET is not configured' });
-  }
+  const isAuthorized =
+    bearerToken === cronSecret ||
+    legacyHeaderSecret === cronSecret ||
+    gasHeaderToken === gasCronToken ||
+    querySecret === gasCronToken ||
+    bodyToken === gasCronToken;
 
-  if (bearerToken !== process.env.CRON_SECRET && legacyHeaderSecret !== process.env.CRON_SECRET) {
+  if (!isAuthorized) {
     console.log('[Cron] Unauthorized access attempt');
     return res.status(401).json({ error: 'Unauthorized' });
   }
@@ -85,7 +99,12 @@ export default async function handler(req, res) {
 
     console.log('[Cron] Completed. Sent:', sentCount, 'Remaining:', remainingReminders.length);
 
-    return res.status(200).json({ success: true, sent: remindersToSend.length });
+    return res.status(200).json({
+      success: true,
+      sentReminders: remindersToSend.length,
+      sentNotifications: sentCount,
+      remainingReminders: remainingReminders.length
+    });
   } catch (error) {
     console.error('[Cron] Error:', error);
     return res.status(500).json({ error: 'Internal server error' });
