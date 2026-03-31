@@ -3,7 +3,20 @@ import fetch from 'node-fetch';
 
 export default async function handler(req, res) {
   // セキュリティチェック
-  if (req.headers['x-cron-secret'] !== process.env.CRON_SECRET) {
+  // Vercel Cron は Authorization: Bearer <CRON_SECRET> を使うため、
+  // 既存実装との互換で x-cron-secret も許可する。
+  const rawAuthHeader = req.headers.authorization || '';
+  const bearerToken = rawAuthHeader.startsWith('Bearer ')
+    ? rawAuthHeader.slice('Bearer '.length).trim()
+    : '';
+  const legacyHeaderSecret = req.headers['x-cron-secret'];
+
+  if (!process.env.CRON_SECRET) {
+    console.log('[Cron] CRON_SECRET is not configured');
+    return res.status(500).json({ error: 'CRON_SECRET is not configured' });
+  }
+
+  if (bearerToken !== process.env.CRON_SECRET && legacyHeaderSecret !== process.env.CRON_SECRET) {
     console.log('[Cron] Unauthorized access attempt');
     return res.status(401).json({ error: 'Unauthorized' });
   }

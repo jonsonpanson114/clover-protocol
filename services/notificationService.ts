@@ -1,5 +1,5 @@
 import { CharacterId, MissionReminder } from '../types';
-import { subscribeToPush, getPushSubscription } from './pushSubscriptionService';
+import { subscribeToPush, syncPushSubscriptionToServer } from './pushSubscriptionService';
 
 const STORAGE_KEY_REMINDER = 'CLOVER_REMINDER_';
 const STORAGE_KEY_PERMISSION = 'CLOVER_NOTIFICATION_PERMISSION';
@@ -253,6 +253,8 @@ export const initializePushNotifications = async (): Promise<boolean> => {
     const existingSubscription = await registration.pushManager.getSubscription();
     if (existingSubscription) {
       console.log('[Push] Already subscribed to push notifications');
+      // Server-side subscription storage may be lost/rotated. Re-sync on init.
+      await syncPushSubscriptionToServer();
       return true;
     }
 

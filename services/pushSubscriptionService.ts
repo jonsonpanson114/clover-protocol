@@ -76,6 +76,23 @@ export async function getPushSubscription(): Promise<PushSubscription | null> {
 }
 
 /**
+ * Ensure existing subscription is synced to server storage.
+ */
+export async function syncPushSubscriptionToServer(): Promise<boolean> {
+  try {
+    const subscription = await getPushSubscription();
+    if (!subscription) {
+      return false;
+    }
+    await sendSubscriptionToServer(subscription);
+    return true;
+  } catch (error) {
+    console.error('[Push] Failed to sync existing subscription:', error);
+    return false;
+  }
+}
+
+/**
  * Unsubscribe from push notifications
  */
 export async function unsubscribeFromPush(): Promise<void> {
