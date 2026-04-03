@@ -219,6 +219,15 @@ const getCharacterInstruction = (charId, day, stats) => {
 // Placeholder for logging (not needed in serverless function)
 const sendLog = () => {};
 
+function isValidChatRequestBody(body) {
+  if (!body || typeof body !== 'object') return false;
+  if (!Array.isArray(body.history)) return false;
+  if (typeof body.currentCharId !== 'string' || body.currentCharId.length === 0) return false;
+  if (typeof body.day !== 'number' || !Number.isFinite(body.day)) return false;
+  if (typeof body.userPrompt !== 'string') return false;
+  return true;
+}
+
 export default async function handler(req, res) {
   // CORS headers - Restrict to specific origins in production
   const allowedOrigins = process.env.ALLOWED_ORIGINS
@@ -242,6 +251,13 @@ export default async function handler(req, res) {
   }
 
   try {
+    if (!isValidChatRequestBody(req.body)) {
+      return res.status(400).json({
+        error: 'Invalid request body',
+        userMessage: 'リクエスト形式が不正です。history/currentCharId/day/userPrompt を確認してください。'
+      });
+    }
+
     const { history, currentCharId, day, userPrompt, stats } = req.body;
 
     // Get API key from environment variable (server-side only)

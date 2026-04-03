@@ -3,7 +3,7 @@ function triggerCloverPushCron() {
   var token = PropertiesService.getScriptProperties().getProperty("GAS_CRON_TOKEN");
 
   if (!token) {
-    throw new Error("Missing Script Property: GAS_CRON_TOKEN");
+    throw new Error("スクリプトプロパティ GAS_CRON_TOKEN が未設定です");
   }
 
   var response = UrlFetchApp.fetch(endpoint, {
@@ -15,8 +15,8 @@ function triggerCloverPushCron() {
     muteHttpExceptions: true
   });
 
-  Logger.log("Status: " + response.getResponseCode());
-  Logger.log("Body: " + response.getContentText());
+  Logger.log("ステータス: " + response.getResponseCode());
+  Logger.log("レスポンス: " + response.getContentText());
 }
 
 function testCloverPushCron() {
