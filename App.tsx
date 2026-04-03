@@ -16,19 +16,16 @@ import SeasonalBanner from './components/SeasonalBanner';
 import TypewriterText from './components/TypewriterText';
 import { generateResponse } from './services/geminiService';
 import { saveContent } from './services/driveLogger';
-import { scheduleMissionReminder, triggerReminderCheck } from './services/reminderService';
 import { initializePushNotifications, schedulePushReminder } from './services/notificationService';
 import { Send, Zap, Loader2, AlertTriangle, Trash2, Trophy, Archive, X, Menu, Calendar, Book, Sparkles, Bell } from 'lucide-react';
 
 // Updated storage key for V2 data structure
 const STORAGE_KEY = 'CLOVER_PROTOCOL_STATE_V2';
-const REMINDER_STORAGE_KEY = 'CLOVER_LAST_REMINDED_DATE';
 
 // Constants
 const ERROR_DISPLAY_DURATION = 3000; // 3 seconds
 const REMINDER_CLEANUP_WINDOW = 60000; // 1 minute
 const UI_CLEANUP_INTERVAL = 15000; // 15 seconds
-const REMINDER_CHECK_INTERVAL = 30000; // 30 seconds
 
 type Histories = Record<CharacterId, Message[]>;
 
@@ -362,16 +359,7 @@ const App: React.FC = () => {
             reminders: [...(prev.reminders || []), newReminder]
         }));
 
-        // IndexedDBに保存（Service Workerがバックグラウンドでチェック）
-        try {
-            await scheduleMissionReminder(newReminder.id, missionTitle, targetTime);
-            // Service Workerに即時チェックを指示
-            triggerReminderCheck();
-        } catch (error) {
-            console.error('Failed to save reminder to IndexedDB:', error);
-        }
-
-        // Push通知もスケジュール（アプリを完全に終了しても通知が届く）
+        // サーバープッシュに一本化（アプリを終了していても通知可能）
         try {
             await schedulePushReminder(newReminder);
         } catch (error) {

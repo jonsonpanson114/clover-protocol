@@ -1,165 +1,19 @@
 // Service Worker for CLOVER PROTOCOL PWA
-// Handles push notifications and caching
+// Push notification handling is intentionally server-push only.
 importScripts('https://storage.googleapis.com/workbox-cdn/releases/6.4.1/workbox-sw.js');
 
 if (workbox) {
-  // Inject manifest for precaching
   workbox.precaching.precacheAndRoute(self.__WB_MANIFEST || []);
 }
 
-const STATIC_CACHE = 'static-v1';
-const DB_NAME = 'CloverReminderDB';
-const DB_VERSION = 1;
-const STORE_NAME = 'reminders';
-const REMINDER_CHECK_INTERVAL = 30000; // 30 seconds
-
-let checkInterval = null;
-
-// IndexedDB helpers
-const openDB = () => {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(request.result);
-    request.onupgradeneeded = (event) => {
-      const db = event.target.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
-      }
-    };
-  });
-};
-
-const getAllReminders = async () => {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, 'readwrite');
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.getAll();
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-};
-
-const updateReminder = async (reminder) => {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, 'readwrite');
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.put(reminder);
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-};
-
-const deleteReminder = async (id) => {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, 'readwrite');
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.delete(id);
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
-  });
-};
-
-// Check and send notifications
-const checkReminders = async () => {
-  try {
-    const reminders = await getAllReminders();
-    const now = Date.now();
-
-    for (const reminder of reminders) {
-      // Skip if already notified
-      if (reminder.notified) continue;
-
-      // Check if time has come
-      if (reminder.targetTime <= now) {
-        // Show notification
-        await self.registration.showNotification(
-          reminder.title || 'CLOVER PROTOCOL',
-          {
-            body: reminder.body || 'ミッションの時間です',
-            icon: '/pwa-192x192.png',
-            badge: '/pwa-192x192.png',
-            tag: reminder.id,
-            requireInteraction: true,
-            vibrate: [200, 100, 200],
-            data: { reminderId: reminder.id }
-          }
-        );
-
-        // Mark as notified
-        await updateReminder({ ...reminder, notified: true });
-
-        console.log('[SW] Reminder sent:', reminder.id);
-      }
-    }
-
-    // Clean up old reminders (older than 1 hour and already notified)
-    const oneHourAgo = now - (60 * 60 * 1000);
-    for (const reminder of reminders) {
-      if (reminder.notified && reminder.targetTime < oneHourAgo) {
-        await deleteReminder(reminder.id);
-        console.log('[SW] Cleaned up old reminder:', reminder.id);
-      }
-    }
-  } catch (error) {
-    console.error('[SW] Error checking reminders:', error);
-  }
-};
-
-// Install event
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(STATIC_CACHE).then((cache) => {
-      return cache.addAll([
-        '/',
-        '/pwa-192x192.png',
-        '/pwa-512x512.png',
-        '/pwa-maskable-512.png',
-      ]);
-    })
-  );
+  event.waitUntil(self.skipWaiting());
 });
 
-// Activate event
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheName !== STATIC_CACHE) {
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    })
-  );
-
-  // Start checking reminders immediately
-  event.waitUntil(
-    (async () => {
-      await checkReminders();
-      // Check every 30 seconds
-      if (!checkInterval) {
-        checkInterval = setInterval(checkReminders, REMINDER_CHECK_INTERVAL);
-        console.log('[SW] Started reminder checker (30s interval)');
-      }
-    })()
-  );
+  event.waitUntil(self.clients.claim());
 });
 
-// Fetch event
-self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    caches.match(event.request).then((response) => {
-      return response || fetch(event.request);
-    })
-  );
-});
-
-// Push event
 self.addEventListener('push', (event) => {
   let data = {};
 
@@ -185,58 +39,35 @@ self.addEventListener('push', (event) => {
       {
         action: 'open',
         title: 'アプリを開く',
-        icon: '/pwa-192x192.png'
+        icon: '/pwa-192x192.png',
       },
     ],
     data: {
       ...data.data,
-      timestamp: Date.now()
-    }
+      timestamp: Date.now(),
+    },
   };
-
-  console.log('[SW] Push notification received:', data);
 
   event.waitUntil(
     self.registration.showNotification(data.title || 'CLOVER PROTOCOL', options)
   );
 });
 
-// Notification click event
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-
-  console.log('[SW] Notification clicked:', event.action);
 
   if (event.action === 'open' || !event.action) {
     event.waitUntil(
       self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-        // Focus existing window if available
         for (const client of clientList) {
           if (client.url.includes(self.location.origin) && 'focus' in client) {
-            console.log('[SW] Focusing existing window');
             return client.focus();
           }
         }
-        // Open new window if no existing window
         if (clients.openWindow) {
-          console.log('[SW] Opening new window');
           return clients.openWindow('/');
         }
       })
     );
-  }
-});
-
-// Sync event
-self.addEventListener('sync', (event) => {
-  if (event.tag === 'check-reminders') {
-    event.waitUntil(checkReminders());
-  }
-});
-
-// Message event - receive commands from main app
-self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'CHECK_REMINDERS') {
-    event.waitUntil(checkReminders());
   }
 });
