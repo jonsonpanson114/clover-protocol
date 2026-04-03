@@ -70,6 +70,11 @@ async function getSubscriptionsFromJSONBin() {
         'X-Master-Key': JSONBIN_API_KEY
       }
     });
+    if (!response.ok) {
+      const errBody = await response.text();
+      console.error('[Push Send] JSONBin GET failed:', response.status, errBody);
+      return [];
+    }
 
     const data = await response.json();
     return data.record?.subscriptions || [];

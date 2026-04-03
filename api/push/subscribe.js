@@ -37,6 +37,10 @@ async function saveToJSONBin(subscription) {
       'X-Master-Key': JSONBIN_API_KEY
     }
   });
+  if (!currentResponse.ok) {
+    const errBody = await currentResponse.text();
+    throw new Error(`[Push Subscribe] JSONBin GET failed: ${currentResponse.status} ${errBody}`);
+  }
 
   const currentData = await currentResponse.json();
   const record = currentData.record || { reminders: [], subscriptions: [] };
@@ -50,7 +54,7 @@ async function saveToJSONBin(subscription) {
   }
 
   // 更新 (既存のリマインダーも保持する)
-  await fetch(JSONBIN_URL, {
+  const updateResponse = await fetch(JSONBIN_URL, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -58,6 +62,10 @@ async function saveToJSONBin(subscription) {
     },
     body: JSON.stringify({ ...record, subscriptions })
   });
+  if (!updateResponse.ok) {
+    const errBody = await updateResponse.text();
+    throw new Error(`[Push Subscribe] JSONBin PUT failed: ${updateResponse.status} ${errBody}`);
+  }
 
   console.log('[Push Subscribe] Saved to JSONBin:', subscriptions.length);
 }

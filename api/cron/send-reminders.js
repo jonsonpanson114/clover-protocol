@@ -126,6 +126,11 @@ async function getDataFromJSONBin() {
         'X-Master-Key': JSONBIN_API_KEY
       }
     });
+    if (!response.ok) {
+      const errBody = await response.text();
+      console.error('[Cron] JSONBin GET failed:', response.status, errBody);
+      return { reminders: [], subscriptions: [] };
+    }
 
     const data = await response.json();
     return data.record || { reminders: [], subscriptions: [] };
@@ -139,7 +144,7 @@ async function saveToJSONBin(data) {
   const JSONBIN_URL = process.env.JSONBIN_URL;
   const JSONBIN_API_KEY = process.env.JSONBIN_API_KEY;
 
-  await fetch(JSONBIN_URL, {
+  const response = await fetch(JSONBIN_URL, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -147,6 +152,10 @@ async function saveToJSONBin(data) {
     },
     body: JSON.stringify(data)
   });
+  if (!response.ok) {
+    const errBody = await response.text();
+    throw new Error(`[Cron] JSONBin PUT failed: ${response.status} ${errBody}`);
+  }
 
   console.log('[Cron] Saved to JSONBin');
 }
