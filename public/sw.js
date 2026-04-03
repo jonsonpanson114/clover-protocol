@@ -15,6 +15,9 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('push', (event) => {
+  const iconUrl = new URL('/pwa-512x512.png', self.location.origin).href;
+  const badgeUrl = new URL('/pwa-192x192.png', self.location.origin).href;
+
   let data = {};
 
   try {
@@ -30,8 +33,8 @@ self.addEventListener('push', (event) => {
 
   const options = {
     body: data.body || 'ミッションが利用可能です',
-    icon: '/pwa-192x192.png',
-    badge: '/pwa-192x192.png',
+    icon: iconUrl,
+    badge: badgeUrl,
     tag: data.tag || data.data?.reminderId || 'clover-notification',
     requireInteraction: true,
     vibrate: [200, 100, 200],
@@ -39,7 +42,7 @@ self.addEventListener('push', (event) => {
       {
         action: 'open',
         title: 'アプリを開く',
-        icon: '/pwa-192x192.png',
+        icon: iconUrl,
       },
     ],
     data: {

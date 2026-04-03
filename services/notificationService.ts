@@ -51,10 +51,13 @@ export const showNotification = (
     return;
   }
 
+  const iconUrl = icon || `${window.location.origin}/pwa-512x512.png`;
+  const badgeUrl = `${window.location.origin}/pwa-192x192.png`;
+
   const options: NotificationOptions = {
     body,
-    icon: icon || '/pwa-192x192.png',
-    badge: '/pwa-192x192.png',
+    icon: iconUrl,
+    badge: badgeUrl,
     tag: tag || 'clover-notification',
     requireInteraction: false,
   };
